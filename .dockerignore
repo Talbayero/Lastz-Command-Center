@@ -1,0 +1,10 @@
+.git
+.next
+node_modules
+temp-pr
+BOM
+Migration
+dev.db
+dev.db-*
+*.log
+temp_build_log.txt

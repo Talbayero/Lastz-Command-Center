@@ -1,12 +1,23 @@
-import Database from 'better-sqlite3';
-import path from 'path';
+import Database from "better-sqlite3";
+import fs from "fs";
+import path from "path";
 
-// Use an absolute path for the SQLite file to avoid issues in different environments
-const dbPath = path.resolve(process.cwd(), 'dev.db');
-const db = new Database(dbPath);
+const configuredDbPath =
+  process.env.SQLITE_PATH ||
+  (process.env.NODE_ENV === "production"
+    ? "/data/lastz.db"
+    : path.resolve(process.cwd(), "dev.db"));
 
-// Enable WAL mode for better performance in Next.js
-db.pragma('journal_mode = WAL');
+const dbDirectory = path.dirname(configuredDbPath);
+
+if (!fs.existsSync(dbDirectory)) {
+  fs.mkdirSync(dbDirectory, { recursive: true });
+}
+
+const db = new Database(configuredDbPath);
+
+// WAL mode improves read/write concurrency for the single-instance deploy target.
+db.pragma("journal_mode = WAL");
 
 // Initialize tables if they don't exist
 const initDb = () => {
