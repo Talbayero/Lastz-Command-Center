@@ -1,0 +1,1 @@
+cd "C:\Users\Teddy A\OneDrive\Escritorio\Last Z"
