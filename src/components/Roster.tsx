@@ -19,6 +19,7 @@ type PlayerData = {
 };
 
 type SortField =
+  | "rank"
   | "name"
   | "gloryWarStatus"
   | "techPower"
@@ -98,8 +99,19 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
     setSortDirection(field === "name" || field === "gloryWarStatus" ? "asc" : "desc");
   };
 
+  const scoreRankings = [...players]
+    .sort((a, b) => b.latestScore - a.latestScore)
+    .reduce<Record<string, number>>((acc, player, index) => {
+      acc[player.id] = index + 1;
+      return acc;
+    }, {});
+
   const sortedPlayers = [...players].sort((a, b) => {
     const direction = sortDirection === "asc" ? 1 : -1;
+
+    if (sortField === "rank") {
+      return (scoreRankings[a.id] - scoreRankings[b.id]) * direction;
+    }
 
     if (sortField === "name" || sortField === "gloryWarStatus") {
       return a[sortField].localeCompare(b[sortField]) * direction;
@@ -107,13 +119,6 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
 
     return ((a[sortField] ?? 0) - (b[sortField] ?? 0)) * direction;
   });
-
-  const scoreRankings = [...players]
-    .sort((a, b) => b.latestScore - a.latestScore)
-    .reduce<Record<string, number>>((acc, player, index) => {
-      acc[player.id] = index + 1;
-      return acc;
-    }, {});
 
   const getSortIndicator = (field: SortField) => {
     if (sortField !== field) return " ↕";
@@ -205,7 +210,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
           <thead style={{ backgroundColor: 'var(--bg-dark)', borderBottom: '1px solid var(--border-subtle)' }}>
             <tr>
               <th style={thStyle}>ACTIONS</th>
-              <th style={thStyle}>RANK</th>
+              <th style={sortableThStyle(sortField === "rank")} onClick={() => onSort("rank")}>RANK{getSortIndicator("rank")}</th>
               <th style={sortableThStyle(sortField === "name")} onClick={() => onSort("name")}>NAME{getSortIndicator("name")}</th>
               <th style={{ ...sortableThStyle(sortField === "gloryWarStatus"), backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }} onClick={() => onSort("gloryWarStatus")}>GLORY WAR{getSortIndicator("gloryWarStatus")}</th>
               <th style={sortableThStyle(sortField === "techPower")} onClick={() => onSort("techPower")}>TECH POWER{getSortIndicator("techPower")}</th>
