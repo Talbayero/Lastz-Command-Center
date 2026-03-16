@@ -6,11 +6,11 @@ import { CheckCircle, Clock, ShieldAlert, User } from "lucide-react";
 
 type BugData = {
   id: string;
-  reporter: string;
+  reporter: string | null;
   description: string;
   priority: string;
   status: string;
-  createdAt: string;
+  createdAt: string | Date;
 };
 
 export default function BugList({ initialBugs }: { initialBugs: BugData[] }) {
@@ -63,7 +63,7 @@ export default function BugList({ initialBugs }: { initialBugs: BugData[] }) {
                 <td style={tdStyle}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <User size={14} className="text-muted" />
-                    {bug.reporter}
+                    {bug.reporter || "Anonymous"}
                   </div>
                 </td>
                 <td style={{ ...tdStyle, maxWidth: '400px' }}>{bug.description}</td>
