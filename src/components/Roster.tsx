@@ -18,11 +18,26 @@ type PlayerData = {
   latestScore: number;
 };
 
+type SortField =
+  | "name"
+  | "gloryWarStatus"
+  | "techPower"
+  | "heroPower"
+  | "troopPower"
+  | "modVehiclePower"
+  | "structurePower"
+  | "kills"
+  | "latestScore";
+
+type SortDirection = "asc" | "desc";
+
 export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[] }) {
   const [players, setPlayers] = useState<PlayerData[]>(initialPlayers);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [sortField, setSortField] = useState<SortField>("latestScore");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const handleInputChange = (id: string, field: keyof PlayerData, value: string | number) => {
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
@@ -71,6 +86,31 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
     } else {
       setMessage({ type: "error", text: result.error || "Failed to delete player." });
     }
+  };
+
+  const onSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setSortField(field);
+    setSortDirection(field === "name" || field === "gloryWarStatus" ? "asc" : "desc");
+  };
+
+  const sortedPlayers = [...players].sort((a, b) => {
+    const direction = sortDirection === "asc" ? 1 : -1;
+
+    if (sortField === "name" || sortField === "gloryWarStatus") {
+      return a[sortField].localeCompare(b[sortField]) * direction;
+    }
+
+    return ((a[sortField] ?? 0) - (b[sortField] ?? 0)) * direction;
+  });
+
+  const getSortIndicator = (field: SortField) => {
+    if (sortField !== field) return "";
+    return sortDirection === "asc" ? " ▲" : " ▼";
   };
 
   return (
@@ -158,19 +198,19 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
           <thead style={{ backgroundColor: 'var(--bg-dark)', borderBottom: '1px solid var(--border-subtle)' }}>
             <tr>
               <th style={thStyle}>ACTIONS</th>
-              <th style={thStyle}>NAME</th>
-              <th style={{ ...thStyle, backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }}>GLORY WAR</th>
-              <th style={thStyle}>TECH POWER</th>
-              <th style={thStyle}>HERO POWER</th>
-              <th style={thStyle}>TROOP POWER</th>
-              <th style={thStyle}>MOD VEHICLE</th>
-              <th style={thStyle}>STRUCTURE</th>
-              <th style={thStyle}>KILLS</th>
-              <th style={{ ...thStyle, textAlign: 'right' }}>SCORE (EST)</th>
+              <th style={sortableThStyle(sortField === "name")} onClick={() => onSort("name")}>NAME{getSortIndicator("name")}</th>
+              <th style={{ ...sortableThStyle(sortField === "gloryWarStatus"), backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }} onClick={() => onSort("gloryWarStatus")}>GLORY WAR{getSortIndicator("gloryWarStatus")}</th>
+              <th style={sortableThStyle(sortField === "techPower")} onClick={() => onSort("techPower")}>TECH POWER{getSortIndicator("techPower")}</th>
+              <th style={sortableThStyle(sortField === "heroPower")} onClick={() => onSort("heroPower")}>HERO POWER{getSortIndicator("heroPower")}</th>
+              <th style={sortableThStyle(sortField === "troopPower")} onClick={() => onSort("troopPower")}>TROOP POWER{getSortIndicator("troopPower")}</th>
+              <th style={sortableThStyle(sortField === "modVehiclePower")} onClick={() => onSort("modVehiclePower")}>MOD VEHICLE{getSortIndicator("modVehiclePower")}</th>
+              <th style={sortableThStyle(sortField === "structurePower")} onClick={() => onSort("structurePower")}>STRUCTURE{getSortIndicator("structurePower")}</th>
+              <th style={sortableThStyle(sortField === "kills")} onClick={() => onSort("kills")}>KILLS{getSortIndicator("kills")}</th>
+              <th style={{ ...sortableThStyle(sortField === "latestScore"), textAlign: 'right' }} onClick={() => onSort("latestScore")}>SCORE (EST){getSortIndicator("latestScore")}</th>
             </tr>
           </thead>
           <tbody>
-            {players.map((p) => {
+            {sortedPlayers.map((p, idx) => {
               const isEditing = editingRowId === p.id;
               return (
                 <tr key={p.id} style={{ borderBottom: '1px solid var(--border-subtle)', backgroundColor: isEditing ? 'rgba(176, 38, 255, 0.05)' : 'transparent' }}>
@@ -209,7 +249,10 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                       </button>
                     </div>
                   </td>
-                  <td style={{ ...tdStyle, fontWeight: 600 }}>{p.name}</td>
+                  <td style={{ ...tdStyle, fontWeight: 600 }}>
+                    <span style={{ color: 'var(--accent-neon)', fontFamily: 'var(--font-mono)', marginRight: '0.6rem' }}>#{idx + 1}</span>
+                    {p.name}
+                  </td>
                   <td style={{ ...tdStyle, backgroundColor: 'rgba(176, 38, 255, 0.1)', borderLeft: '1px solid rgba(176, 38, 255, 0.3)', borderRight: '1px solid rgba(176, 38, 255, 0.3)' }}>
                     <select 
                       value={p.gloryWarStatus || 'Offline'}
@@ -293,6 +336,13 @@ const thStyle: React.CSSProperties = {
   fontSize: '0.75rem',
   textTransform: 'uppercase'
 };
+
+const sortableThStyle = (active: boolean): React.CSSProperties => ({
+  ...thStyle,
+  cursor: 'pointer',
+  userSelect: 'none',
+  color: active ? 'var(--accent-neon)' : thStyle.color,
+});
 
 const tdStyle: React.CSSProperties = {
   padding: '0.75rem 1rem',
