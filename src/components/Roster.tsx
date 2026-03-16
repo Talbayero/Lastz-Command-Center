@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { updateRoster } from "@/app/actions/updateRoster";
-import { Pencil, Check, X } from "lucide-react";
+import { deleteRosterPlayer, updateRoster } from "@/app/actions/updateRoster";
+import { Pencil, Check, Trash2 } from "lucide-react";
 
 type PlayerData = {
   id: string;
@@ -48,6 +48,28 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
       setEditingRowId(null);
     } else {
       setEditingRowId(id);
+    }
+  };
+
+  const onDelete = async (player: PlayerData) => {
+    const confirmed = window.confirm(`Delete ${player.name} from the roster? This will also remove their saved snapshots.`);
+    if (!confirmed) return;
+
+    setIsSaving(true);
+    setMessage(null);
+
+    const result = await deleteRosterPlayer(player.id);
+    setIsSaving(false);
+
+    if (result.success) {
+      setPlayers((prev) => prev.filter((p) => p.id !== player.id));
+      if (editingRowId === player.id) {
+        setEditingRowId(null);
+      }
+      setMessage({ type: "success", text: `${player.name} deleted successfully.` });
+      setTimeout(() => setMessage(null), 3000);
+    } else {
+      setMessage({ type: "error", text: result.error || "Failed to delete player." });
     }
   };
 
@@ -135,7 +157,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '1000px' }}>
           <thead style={{ backgroundColor: 'var(--bg-dark)', borderBottom: '1px solid var(--border-subtle)' }}>
             <tr>
-              <th style={thStyle}>EDIT</th>
+              <th style={thStyle}>ACTIONS</th>
               <th style={thStyle}>NAME</th>
               <th style={{ ...thStyle, backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }}>GLORY WAR</th>
               <th style={thStyle}>TECH POWER</th>
@@ -153,20 +175,39 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
               return (
                 <tr key={p.id} style={{ borderBottom: '1px solid var(--border-subtle)', backgroundColor: isEditing ? 'rgba(176, 38, 255, 0.05)' : 'transparent' }}>
                   <td style={tdStyle}>
-                    <button 
-                      onClick={() => toggleEdit(p.id)}
-                      style={{ 
-                        background: 'transparent', 
-                        border: 'none', 
-                        color: isEditing ? 'var(--accent-purple)' : 'var(--text-muted)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      {isEditing ? <Check size={18} /> : <Pencil size={18} />}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <button 
+                        onClick={() => toggleEdit(p.id)}
+                        style={{ 
+                          background: 'transparent', 
+                          border: 'none', 
+                          color: isEditing ? 'var(--accent-purple)' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        {isEditing ? <Check size={18} /> : <Pencil size={18} />}
+                      </button>
+                      <button
+                        onClick={() => onDelete(p)}
+                        disabled={isSaving}
+                        title={`Delete ${p.name}`}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: 'var(--accent-red)',
+                          cursor: isSaving ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: isSaving ? 0.5 : 1,
+                        }}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>{p.name}</td>
                   <td style={{ ...tdStyle, backgroundColor: 'rgba(176, 38, 255, 0.1)', borderLeft: '1px solid rgba(176, 38, 255, 0.3)', borderRight: '1px solid rgba(176, 38, 255, 0.3)' }}>

@@ -59,3 +59,23 @@ export async function updateRoster(players: any[]) {
     return { success: false, error: error.message };
   }
 }
+
+export async function deleteRosterPlayer(playerId: string) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.snapshot.deleteMany({
+        where: { playerId },
+      });
+
+      await tx.player.delete({
+        where: { id: playerId },
+      });
+    });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("ROSTER DELETE ERROR:", error);
+    return { success: false, error: error.message || "Failed to delete player." };
+  }
+}
