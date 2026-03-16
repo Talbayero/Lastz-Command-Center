@@ -19,7 +19,7 @@ export default function RootLayout({
       <body>
         <nav style={{ borderBottom: '1px solid var(--border-subtle)', padding: '1rem 0' }}>
           <div className="container flex-row justify-between">
-            <h2 className="text-gradient-primary">LAST Z // COMMAND CENTER</h2>
+            <h2 className="text-gradient-primary">BOM // COMMAND CENTER</h2>
             <div className="flex-row gap-4 items-center">
               <BugReportModal />
               <button className="cyber-button">Alliance Overview</button>
