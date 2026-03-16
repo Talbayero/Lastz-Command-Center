@@ -1,0 +1,46 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  alliance    String?    @default("Last Z Base")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  // Latest Stats
+  kills       Int        @default(0)
+  totalPower  Int        @default(0)
+  latestScore Float      @default(0)
+
+  // Relationships
+  snapshots   Snapshot[]
+}
+
+model Snapshot {
+  id              String   @id @default(cuid())
+  playerId        String
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  
+  // Core Metrics extracted from screenshot
+  kills           Int
+  totalPower      Int
+  structurePower  Int
+  techPower       Int
+  troopPower      Int
+  heroPower       Int
+  modVehiclePower Int
+
+  // Output Score based on dynamic weights at the time
+  score           Float    @default(0)
+}

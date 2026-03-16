@@ -1,0 +1,184 @@
+:root {
+  --bg-dark: #09090b;
+  --bg-card: #141417;
+  --bg-input: #1f1f22;
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent-neon: #00ffcc; /* Cyan/green neon */
+  --accent-neon-hover: #33ffdb;
+  --accent-purple: #b026ff; /* Neon purple */
+  --accent-red: #ff3366; /* Error/Delete neon */
+  --accent-glass: rgba(0, 255, 204, 0.1);
+  --border-subtle: #27272a;
+  --border-highlight: #00ffcc;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --shadow-neon: 0 0 10px rgba(0, 255, 204, 0.5), 0 0 20px rgba(0, 255, 204, 0.3);
+  --shadow-purple: 0 0 10px rgba(176, 38, 255, 0.5), 0 0 20px rgba(176, 38, 255, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  background-image: 
+    radial-gradient(circle at 15% 50%, rgba(0, 255, 204, 0.03), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(176, 38, 255, 0.03), transparent 25%);
+  min-height: 100vh;
+}
+
+/* Typography Utilities */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.text-gradient-primary {
+  background: linear-gradient(90deg, var(--accent-neon), var(--accent-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+}
+
+/* Base Components */
+.container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 1.5rem 2.5rem;
+}
+
+/* Cyberpunk Card */
+.cyber-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.cyber-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-neon), var(--accent-purple));
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.cyber-card:hover {
+  border-color: var(--accent-neon);
+  box-shadow: 0 0 15px rgba(0, 255, 204, 0.1);
+}
+
+.cyber-card:hover::before {
+  opacity: 1;
+}
+
+/* Cyberpunk Button */
+.cyber-button {
+  background: transparent;
+  color: var(--accent-neon);
+  border: 1px solid var(--accent-neon);
+  padding: 0.75rem 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 4px;
+}
+
+.cyber-button:hover {
+  background: var(--accent-glass);
+  box-shadow: var(--shadow-neon);
+  text-shadow: 0 0 8px rgba(0, 255, 204, 0.8);
+}
+
+.cyber-button.primary {
+  background: var(--accent-neon);
+  color: var(--bg-dark);
+  font-weight: 600;
+}
+
+.cyber-button.primary:hover {
+  background: var(--accent-neon-hover);
+  box-shadow: var(--shadow-neon);
+}
+
+/* Form Elements */
+.cyber-input {
+  width: 100%;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  padding: 0.75rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  border-radius: 4px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cyber-input:focus {
+  outline: none;
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 10px rgba(176, 38, 255, 0.2);
+}
+
+.cyber-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent-neon);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Layout Utilities */
+.flex-row { display: flex; align-items: center; }
+.flex-col { display: flex; flex-direction: column; }
+.gap-2 { gap: 0.5rem; }
+.gap-4 { gap: 1rem; }
+.gap-6 { gap: 1.5rem; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.w-full { width: 100%; }
+
+/* Main Grid */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1.5rem;
+}
+.col-span-12 { grid-column: span 12; }
+.col-span-8 { grid-column: span 9; }
+.col-span-4 { grid-column: span 3; }
+
+@media (max-width: 1024px) {
+  .dashboard-grid > div {
+    grid-column: span 12;
+  }
+}
