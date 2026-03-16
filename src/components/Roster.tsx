@@ -104,19 +104,19 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
 
         {/* Glory War Status */}
         <div style={{ ...summaryCardStyle, borderLeft: '4px solid var(--accent-purple)' }}>
-          <div style={{ ...summaryLabelStyle, color: 'var(--accent-purple)', fontSize: '1.1rem' }}>GLORY WAR READINESS</div>
+          <div style={{ ...summaryLabelStyle, color: 'var(--accent-purple)', fontSize: '1.1rem', fontWeight: 800 }}>GLORY WAR READINESS</div>
           <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
             <div className="flex-col">
               <span style={miniLabelStyle}>ATTACKERS</span>
-              <span style={{ color: 'var(--accent-purple)', fontWeight: 'bold' }}>{players.filter(p => p.gloryWarStatus === 'Attacker').length}</span>
+              <span style={{ color: 'var(--accent-purple)', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{players.filter(p => p.gloryWarStatus === 'Attacker').length}</span>
             </div>
             <div className="flex-col">
               <span style={miniLabelStyle}>DEFENDERS</span>
-              <span style={{ color: 'var(--accent-neon)', fontWeight: 'bold' }}>{players.filter(p => p.gloryWarStatus === 'Defender').length}</span>
+              <span style={{ color: 'var(--accent-neon)', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{players.filter(p => p.gloryWarStatus === 'Defender').length}</span>
             </div>
             <div className="flex-col">
-              <span style={miniLabelStyle}>TOTAL ONLINE</span>
-              <span style={{ color: '#fff', fontWeight: 'bold' }}>{players.filter(p => p.gloryWarStatus !== 'Offline').length}</span>
+              <span style={miniLabelStyle}>TOTAL OFFLINE</span>
+              <span style={{ color: '#fff', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{players.filter(p => p.gloryWarStatus === 'Offline').length}</span>
             </div>
           </div>
         </div>
