@@ -1,4 +1,4 @@
-This is a Next.js alliance dashboard for tracking Last Z player performance, OCR-ing profile screenshots, and storing roster and bug data in SQLite.
+This is a Next.js alliance dashboard for tracking Last Z player performance, OCR-ing profile screenshots, and storing roster and bug data in PostgreSQL through Prisma.
 
 ## Getting Started
 
@@ -16,7 +16,7 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-The local SQLite database is stored in `dev.db` by default.
+Set `DATABASE_URL` before running the app so Prisma can connect to your Postgres database.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
@@ -24,7 +24,7 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 Deployment instructions are in `DEPLOY.md`.
 
-This version is best deployed on Railway, Render, or a VPS with Docker plus a persistent disk mounted at `/data`.
+This version is best deployed on Vercel, Render, or another host that can connect to Postgres.
 
 ## Learn More
 
@@ -35,4 +35,4 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-For a Vercel deployment, the app would first need to move away from local SQLite to a hosted database such as Postgres.
+For first-time setup, run `npx prisma generate` and `npx prisma db push` after configuring `DATABASE_URL`.

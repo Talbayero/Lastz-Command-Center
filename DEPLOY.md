@@ -1,47 +1,42 @@
 # Deploying Last Z on the Web
 
-This app is a Next.js server-rendered app that writes data to a local SQLite database.
+This app now uses Prisma with PostgreSQL instead of a local SQLite file.
 
-## Best hosting choice for this version
+## Recommended free-friendly stack
 
-Use a host that supports:
+- Vercel for the app
+- Neon or Supabase for the Postgres database
 
-- a long-running Node server
-- Docker deploys
-- a persistent disk/volume
+This removes the persistent-disk requirement and works much better on free hosting.
 
-Good fits:
+## Environment variable
 
-- Railway
-- Render
-- any VPS running Docker
+Set this in your host:
 
-Avoid Vercel for the current version because the app stores data in SQLite on disk, and Vercel's serverless filesystem is not a good fit for persistent writes.
+- `DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require`
 
-## Environment variables
+## First-time database setup
 
-Set these in your host:
-
-- `NODE_ENV=production`
-- `SQLITE_PATH=/data/lastz.db`
-
-`DATABASE_URL` is only needed if you later start using Prisma runtime queries in production.
-
-## Railway or Render
-
-1. Push this repo to GitHub.
-2. Create a new web service from the repo.
-3. Choose Docker deployment.
-4. Attach a persistent disk and mount it at `/data`.
-5. Set the environment variable `SQLITE_PATH=/data/lastz.db`.
-6. Expose port `3000` if the platform asks.
-7. Deploy.
-
-## Local production test
+After creating your Postgres database and setting `DATABASE_URL`, run:
 
 ```bash
-docker build -t lastz-web .
-docker run -p 3000:3000 -e SQLITE_PATH=/data/lastz.db -v lastz-data:/data lastz-web
+npx prisma generate
+npx prisma db push
 ```
 
-Then open `http://localhost:3000`.
+## Vercel
+
+1. Push this repo to GitHub.
+2. Create a Postgres database in Neon or Supabase.
+3. Copy its connection string into `DATABASE_URL`.
+4. Import this repo into Vercel.
+5. Add the `DATABASE_URL` environment variable in Vercel.
+6. Deploy.
+
+## Render
+
+1. Push this repo to GitHub.
+2. Create a managed Postgres database or use Neon/Supabase.
+3. Create a new web service from the repo.
+4. Set `DATABASE_URL`.
+5. Deploy.

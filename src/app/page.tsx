@@ -7,64 +7,23 @@ import ScoringEngine from "@/components/ScoringEngine";
 import Roster from "@/components/Roster";
 import BugReportModal from "@/components/BugReportModal";
 import BugList from "@/components/BugList";
-
-import db from "@/utils/sqlite";
+import prisma from "@/utils/db";
+import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 
 export default async function Home(props: { searchParams: Promise<{ name?: string, view?: string }> }) {
   const searchParams = await props.searchParams;
   const targetName = searchParams.name;
   const currentView = searchParams.view || 'performance';
 
-  // 1. Fetch Alliance Average
-  // ... (keep avg)
-  const allianceAvg = db.prepare(`
-    SELECT 
-      AVG(techPower) as techPower, 
-      AVG(heroPower) as heroPower, 
-      AVG(troopPower) as troopPower, 
-      AVG(modVehiclePower) as modVehiclePower, 
-      AVG(structurePower) as structurePower 
-    FROM Snapshot
-  `).get() as any;
-
-  // 2. Fetch Selected Player
-  let selectedPlayerData: any = null;
-  if (targetName) {
-    selectedPlayerData = db.prepare(`
-      SELECT p.name, p.totalPower, s.* 
-      FROM Player p
-      JOIN Snapshot s ON p.id = s.playerId
-      WHERE LOWER(p.name) = LOWER(?)
-      ORDER BY s.createdAt DESC LIMIT 1
-    `).get(targetName);
-  }
-
-  if (!selectedPlayerData) {
-    selectedPlayerData = db.prepare(`
-      SELECT p.name, p.totalPower, s.* 
-      FROM Player p
-      JOIN Snapshot s ON p.id = s.playerId
-      ORDER BY p.latestScore DESC LIMIT 1
-    `).get();
-  }
-
-  // 3. Fetch Roster Data
-  const rosterData = db.prepare(`
-    SELECT 
-      p.id, p.name, p.totalPower, p.kills, p.gloryWarStatus, p.latestScore,
-      s.techPower, s.heroPower, s.troopPower, s.modVehiclePower, s.structurePower
-    FROM Player p
-    LEFT JOIN Snapshot s ON p.id = s.playerId
-    WHERE s.createdAt = (SELECT MAX(createdAt) FROM Snapshot WHERE playerId = p.id)
-    OR s.id IS NULL
-    ORDER BY p.name ASC
-  `).all() as any[];
-
-  // 4. Fetch Bugs
-  const bugData = db.prepare(`SELECT * FROM Bug ORDER BY createdAt DESC`).all() as any[];
+  const [allianceAvg, selectedPlayerData, rosterData, bugData, allPlayers] = await Promise.all([
+    getAllianceAverage(),
+    getSelectedPlayer(targetName),
+    getRosterData(),
+    prisma.bug.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.player.findMany({ orderBy: { name: "asc" }, select: { name: true } }),
+  ]);
 
   const effectiveName = selectedPlayerData?.name || "Alliance Member";
-  const allPlayers = db.prepare('SELECT name FROM Player ORDER BY name ASC').all() as { name: string }[];
   const allPlayerNames = allPlayers.map(p => p.name);
 
   return (

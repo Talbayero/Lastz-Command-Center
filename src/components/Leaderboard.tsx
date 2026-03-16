@@ -1,25 +1,10 @@
-import db from "@/utils/sqlite";
+import { getLeaderboardData } from "@/utils/dashboardData";
 import Link from "next/link";
 
-export default function Leaderboard({ selectedName }: { selectedName?: string }) {
+export default async function Leaderboard({ selectedName }: { selectedName?: string }) {
   let players: any[] = [];
   try {
-    players = db.prepare(`
-      SELECT 
-        p.*, 
-        s.techPower, 
-        s.heroPower, 
-        s.troopPower, 
-        s.modVehiclePower, 
-        s.structurePower 
-      FROM Player p
-      JOIN Snapshot s ON p.id = s.playerId
-      WHERE s.createdAt = (
-        SELECT MAX(createdAt) FROM Snapshot WHERE playerId = p.id
-      )
-      ORDER BY p.latestScore DESC
-      LIMIT 10
-    `).all();
+    players = await getLeaderboardData();
   } catch (e) {
     console.error("Leaderboard fetch failed:", e);
   }

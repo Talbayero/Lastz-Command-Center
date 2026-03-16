@@ -1,8 +1,7 @@
 "use server";
 
-import db from "@/utils/sqlite";
+import prisma from "@/utils/db";
 import { revalidatePath } from "next/cache";
-import { v4 as uuidv4 } from "uuid";
 
 export async function savePlayerData(data: any) {
   try {
@@ -34,42 +33,46 @@ export async function savePlayerData(data: any) {
       (powerStats.structure  * SCORE_WEIGHTS.structure) +
       (powerStats.modVehicle * SCORE_WEIGHTS.modVehicle);
 
-    // --- SQL TRANSACTION BEGIN ---
-    const run = db.transaction(() => {
-      // 1. Find or Create Player
-      let player = db.prepare('SELECT id FROM Player WHERE name = ?').get(name) as { id: string } | undefined;
-      
-      if (!player) {
-        player = { id: uuidv4() };
-        db.prepare(`
-          INSERT INTO Player (id, name, kills, totalPower, latestScore, updatedAt)
-          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        `).run(player.id, name, kills, totalPower, rawScore);
-      } else {
-        db.prepare(`
-          UPDATE Player 
-          SET kills = ?, totalPower = ?, latestScore = ?, updatedAt = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).run(kills, totalPower, rawScore, player.id);
-      }
+    await prisma.$transaction(async (tx) => {
+      const existingPlayer = await tx.player.findUnique({
+        where: { name },
+        select: { id: true },
+      });
 
-      // 2. Create Snapshot
-      db.prepare(`
-        INSERT INTO Snapshot (
-          id, playerId, kills, totalPower, structurePower, techPower, 
-          troopPower, heroPower, modVehiclePower, score
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        uuidv4(), player.id, kills, totalPower, 
-        powerStats.structure, powerStats.tech, powerStats.troop, 
-        powerStats.hero, powerStats.modVehicle, rawScore
-      );
+      const player = existingPlayer
+        ? await tx.player.update({
+            where: { id: existingPlayer.id },
+            data: {
+              kills,
+              totalPower,
+              latestScore: rawScore,
+            },
+            select: { id: true },
+          })
+        : await tx.player.create({
+            data: {
+              name,
+              kills,
+              totalPower,
+              latestScore: rawScore,
+            },
+            select: { id: true },
+          });
 
-      return true;
+      await tx.snapshot.create({
+        data: {
+          playerId: player.id,
+          kills,
+          totalPower,
+          structurePower: powerStats.structure,
+          techPower: powerStats.tech,
+          troopPower: powerStats.troop,
+          heroPower: powerStats.hero,
+          modVehiclePower: powerStats.modVehicle,
+          score: rawScore,
+        },
+      });
     });
-
-    run();
-    // --- SQL TRANSACTION END ---
 
     revalidatePath("/");
     return { success: true };

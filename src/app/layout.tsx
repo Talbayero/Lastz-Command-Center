@@ -1,9 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
   title: "Last Z Command Center",
@@ -20,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <body>
         <nav style={{ borderBottom: '1px solid var(--border-subtle)', padding: '1rem 0' }}>
           <div className="container flex-row justify-between">
             <h2 className="text-gradient-primary">LAST Z // COMMAND CENTER</h2>
