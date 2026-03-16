@@ -108,8 +108,15 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
     return ((a[sortField] ?? 0) - (b[sortField] ?? 0)) * direction;
   });
 
+  const scoreRankings = [...players]
+    .sort((a, b) => b.latestScore - a.latestScore)
+    .reduce<Record<string, number>>((acc, player, index) => {
+      acc[player.id] = index + 1;
+      return acc;
+    }, {});
+
   const getSortIndicator = (field: SortField) => {
-    if (sortField !== field) return "";
+    if (sortField !== field) return " ↕";
     return sortDirection === "asc" ? " ▲" : " ▼";
   };
 
@@ -198,6 +205,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
           <thead style={{ backgroundColor: 'var(--bg-dark)', borderBottom: '1px solid var(--border-subtle)' }}>
             <tr>
               <th style={thStyle}>ACTIONS</th>
+              <th style={thStyle}>RANK</th>
               <th style={sortableThStyle(sortField === "name")} onClick={() => onSort("name")}>NAME{getSortIndicator("name")}</th>
               <th style={{ ...sortableThStyle(sortField === "gloryWarStatus"), backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }} onClick={() => onSort("gloryWarStatus")}>GLORY WAR{getSortIndicator("gloryWarStatus")}</th>
               <th style={sortableThStyle(sortField === "techPower")} onClick={() => onSort("techPower")}>TECH POWER{getSortIndicator("techPower")}</th>
@@ -249,8 +257,12 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                       </button>
                     </div>
                   </td>
+                  <td style={tdStyle}>
+                    <span style={{ color: 'var(--accent-neon)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                      #{scoreRankings[p.id]}
+                    </span>
+                  </td>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>
-                    <span style={{ color: 'var(--accent-neon)', fontFamily: 'var(--font-mono)', marginRight: '0.6rem' }}>#{idx + 1}</span>
                     {p.name}
                   </td>
                   <td style={{ ...tdStyle, backgroundColor: 'rgba(176, 38, 255, 0.1)', borderLeft: '1px solid rgba(176, 38, 255, 0.3)', borderRight: '1px solid rgba(176, 38, 255, 0.3)' }}>
