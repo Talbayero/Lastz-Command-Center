@@ -415,9 +415,11 @@ function formatLastConnection(value: string | Date | null, isOnline: boolean) {
 function emptyRolePermissions(): RolePermissions {
   return {
     viewDashboard: false,
+    viewAllianceDuel: false,
     uploadProfile: false,
     editRoster: false,
     exportRoster: false,
+    manageAllianceDuel: false,
     deleteRosterMembers: false,
     editPlayerNames: false,
     manageBugs: false,

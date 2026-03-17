@@ -7,10 +7,12 @@ import ScoringEngine from "@/components/ScoringEngine";
 import Roster from "@/components/Roster";
 import BugList from "@/components/BugList";
 import AllianceOverview from "@/components/AllianceOverview";
+import AllianceDuelPanel from "@/components/AllianceDuelPanel";
 import AuthPanel from "@/components/AuthPanel";
 import AdminPanel from "@/components/AdminPanel";
 import prisma from "@/utils/db";
 import { getCurrentUser, hasPermission } from "@/utils/auth";
+import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements } from "@/utils/allianceDuel";
 import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 
@@ -30,6 +32,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   }
 
   const canViewOverview = hasPermission(currentUser, "viewAllianceOverview");
+  const canViewAllianceDuel = hasPermission(currentUser, "viewAllianceDuel");
+  const canManageAllianceDuel = hasPermission(currentUser, "manageAllianceDuel");
   const canViewDashboard = hasPermission(currentUser, "viewDashboard");
   const canUploadProfile = hasPermission(currentUser, "uploadProfile");
   const canManageBugs = hasPermission(currentUser, "manageBugs");
@@ -37,6 +41,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const availableViews = [
     canViewOverview ? "overview" : null,
+    canViewAllianceDuel ? "duel" : null,
     canViewDashboard ? "performance" : null,
     canViewDashboard ? "roster" : null,
     canManageBugs ? "bugs" : null,
@@ -45,7 +50,9 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const currentView = availableViews.includes(requestedView) ? requestedView : availableViews[0] || "performance";
 
-  const [allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
+  await ensureAllianceDuelRequirements();
+
+  const [allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers, duelRequirements, duelScores] = await Promise.all([
     getAllianceAverage(),
     getSelectedPlayer(targetName),
     getRosterData(),
@@ -69,6 +76,20 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
           },
         })
       : Promise.resolve([]),
+    canViewAllianceDuel
+      ? prisma.allianceDuelRequirement.findMany({
+          orderBy: { dayKey: "asc" },
+        })
+      : Promise.resolve([]),
+    canViewAllianceDuel
+      ? prisma.allianceDuelScore.findMany({
+          include: {
+            player: {
+              select: { id: true, name: true, alliance: true },
+            },
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   const effectiveName = selectedPlayerData?.name || currentUser.playerName || "Alliance Member";
@@ -88,6 +109,11 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
           {canViewOverview && (
             <Link href="/?view=overview" className={`cyber-button ${currentView === "overview" ? "primary" : ""}`} style={tabLinkStyle}>
               Overview
+            </Link>
+          )}
+          {canViewAllianceDuel && (
+            <Link href="/?view=duel" className={`cyber-button ${currentView === "duel" ? "primary" : ""}`} style={tabLinkStyle}>
+              Alliance Duel
             </Link>
           )}
           {canViewDashboard && (
@@ -119,6 +145,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
             <h2 style={{ color: "var(--accent-neon)", fontSize: "1.25rem" }}>
               {currentView === "overview"
                 ? "ALLIANCE ANALYTICS"
+                : currentView === "duel"
+                  ? "ALLIANCE DUEL MAINTENANCE"
                 : currentView === "performance"
                   ? "TOP PERFORMERS"
                   : currentView === "roster"
@@ -130,6 +158,38 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
             {currentView === "overview" ? (
               <AllianceOverview players={rosterData} bugs={bugData} />
+            ) : currentView === "duel" ? (
+              <AllianceDuelPanel
+                initialPlayers={allPlayers.map((player) => {
+                  const playerScores = duelScores.filter((entry) => entry.playerId === player.id);
+                  return {
+                    id: player.id,
+                    name: player.name,
+                    scores: {
+                      daily: Object.fromEntries(
+                        ALLIANCE_DUEL_DAYS.map((dayKey) => {
+                          const entry = playerScores.find((score) => score.scoreType === "daily" && score.dayKey === dayKey);
+                          return [dayKey, entry ? { score: entry.score, rank: entry.rank } : null];
+                        })
+                      ),
+                      weekly: (() => {
+                        const entry = playerScores.find((score) => score.scoreType === "weekly" && score.dayKey === "ALL");
+                        return entry ? { score: entry.score, rank: entry.rank } : null;
+                      })(),
+                      overall: (() => {
+                        const entry = playerScores.find((score) => score.scoreType === "overall" && score.dayKey === "ALL");
+                        return entry ? { score: entry.score, rank: entry.rank } : null;
+                      })(),
+                    },
+                  };
+                })}
+                initialRequirements={duelRequirements.map((entry) => ({
+                  dayKey: entry.dayKey as (typeof ALLIANCE_DUEL_DAYS)[number],
+                  eventName: entry.eventName,
+                  minimumScore: entry.minimumScore,
+                }))}
+                canManage={canManageAllianceDuel}
+              />
             ) : currentView === "performance" ? (
               <Leaderboard selectedName={selectedPlayerData?.name} />
             ) : currentView === "roster" ? (

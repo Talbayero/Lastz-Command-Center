@@ -16,7 +16,7 @@ model Player {
   alliance        String?    @default("BOM")
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
-  gloryWarStatus String  @default("Offline")
+  gloryWarStatus  String     @default("Offline")
   kills           Int        @default(0)
   totalPower      Int        @default(0)
   march1Power     Int        @default(0)
@@ -25,6 +25,7 @@ model Player {
   march4Power     Int        @default(0)
   latestScore     Float      @default(0)
   snapshots       Snapshot[]
+  duelScores      AllianceDuelScore[]
   account         User?
 }
 
@@ -87,4 +88,29 @@ model UserSession {
   createdAt  DateTime @default(now())
 
   @@index([userId])
+}
+
+model AllianceDuelRequirement {
+  id           String   @id @default(cuid())
+  dayKey        String   @unique
+  eventName     String
+  minimumScore  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AllianceDuelScore {
+  id         String   @id @default(cuid())
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  scoreType   String
+  dayKey      String   @default("ALL")
+  score       Int      @default(0)
+  rank        Int?
+  source      String   @default("manual")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([playerId, scoreType, dayKey])
+  @@index([scoreType, dayKey])
 }

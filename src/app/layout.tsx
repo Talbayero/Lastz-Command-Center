@@ -19,6 +19,7 @@ export default async function RootLayout({
   const currentUser = await getCurrentUser();
   const canManageBugs = hasPermission(currentUser, "manageBugs");
   const canViewOverview = hasPermission(currentUser, "viewAllianceOverview");
+  const canViewAllianceDuel = hasPermission(currentUser, "viewAllianceDuel");
   const canUploadProfile = hasPermission(currentUser, "uploadProfile");
   const canAccessAdmin = hasPermission(currentUser, "manageUsers") || hasPermission(currentUser, "manageRoles");
 
@@ -33,6 +34,7 @@ export default async function RootLayout({
                 <>
                   {canManageBugs && <BugReportModal />}
                   {canViewOverview && <Link href="/?view=overview" className="cyber-button">Alliance Overview</Link>}
+                  {canViewAllianceDuel && <Link href="/?view=duel" className="cyber-button">Alliance Duel</Link>}
                   {canUploadProfile && <Link href="/?view=performance" className="cyber-button">Upload Profile</Link>}
                   {canAccessAdmin && <Link href="/?view=admin" className="cyber-button">Administrator</Link>}
                   <AccountPanel
