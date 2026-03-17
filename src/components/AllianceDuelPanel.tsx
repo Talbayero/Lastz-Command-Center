@@ -338,6 +338,16 @@ export default function AllianceDuelPanel({
       for (const file of fileList) {
         const optimizedBlob = await optimizeUploadImage(file);
         const parsedEntries = await parseAllianceDuelImageLocally(optimizedBlob);
+        if (parsedEntries.length === 0) {
+          setMessage({
+            type: "error",
+            text:
+              fileList.length > 1
+                ? `Stopped on ${file.name}: OCR could not detect any duel rows. Try a clearer screenshot.`
+                : "OCR could not detect any duel rows. Try a clearer screenshot.",
+          });
+          return;
+        }
         const result = await withTimeout(
           saveAllianceDuelParsedEntries({
             scoreType: activeScoreType,
@@ -779,11 +789,16 @@ async function optimizeUploadImage(file: File): Promise<Blob> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const maxWidth = 900;
-      const maxHeight = 1600;
-      const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
-      const width = Math.max(1, Math.round(img.width * scale));
-      const height = Math.max(1, Math.round(img.height * scale));
+      const cropX = Math.round(img.width * 0.03);
+      const cropY = Math.round(img.height * 0.08);
+      const cropWidth = Math.round(img.width * 0.94);
+      const cropHeight = Math.round(img.height * 0.84);
+
+      const maxWidth = 1400;
+      const maxHeight = 2200;
+      const scale = Math.min(maxWidth / cropWidth, maxHeight / cropHeight, 1.6);
+      const width = Math.max(1, Math.round(cropWidth * scale));
+      const height = Math.max(1, Math.round(cropHeight * scale));
 
       const canvas = document.createElement("canvas");
       canvas.width = width;
@@ -797,12 +812,11 @@ async function optimizeUploadImage(file: File): Promise<Blob> {
 
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(img, 0, 0, width, height);
+      ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, width, height);
 
       canvas.toBlob(
         (blob) => resolve(blob ?? file),
-        "image/jpeg",
-        0.82
+        "image/png"
       );
     };
     img.onerror = () => resolve(file);
@@ -811,8 +825,24 @@ async function optimizeUploadImage(file: File): Promise<Blob> {
 }
 
 async function parseAllianceDuelImageLocally(blob: Blob) {
-  const dataUrl = await blobToDataUrl(blob);
-  const result = await Tesseract.recognize(dataUrl, "eng");
+  const [normalDataUrl, enhancedDataUrl] = await Promise.all([
+    blobToDataUrl(blob),
+    preprocessDuelImageForOcr(blob),
+  ]);
+
+  const passes = await Promise.all([
+    recognizeDuelRows(normalDataUrl),
+    recognizeDuelRows(enhancedDataUrl),
+  ]);
+
+  return dedupeLocalEntries(passes.flat());
+}
+
+async function recognizeDuelRows(dataUrl: string) {
+  const result = await Tesseract.recognize(dataUrl, "eng", {
+    tessedit_pageseg_mode: "6",
+    preserve_interword_spaces: "1",
+  } as any);
   const ocrWords = (result.data as any)?.words;
   const words: any[] = Array.isArray(ocrWords) ? ocrWords : [];
 
@@ -827,11 +857,9 @@ async function parseAllianceDuelImageLocally(blob: Blob) {
       .filter((word) => word.text)
   );
 
-  return dedupeLocalEntries(
-    groupedRows
-      .map(parseOcrRow)
-      .filter((entry): entry is { name: string; rank: number | null; score: number } => Boolean(entry && entry.name && entry.score > 0))
-  );
+  return groupedRows
+    .map(parseOcrRow)
+    .filter((entry): entry is { name: string; rank: number | null; score: number } => Boolean(entry && entry.name && entry.score > 0));
 }
 
 async function blobToDataUrl(blob: Blob) {
@@ -847,6 +875,40 @@ async function blobToDataUrl(blob: Blob) {
     };
     reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
     reader.readAsDataURL(blob);
+  });
+}
+
+async function preprocessDuelImageForOcr(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not prepare OCR image"));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        const contrast = gray > 160 ? 255 : gray > 100 ? 210 : 25;
+        data[i] = contrast;
+        data[i + 1] = contrast;
+        data[i + 2] = contrast;
+        data[i + 3] = 255;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => reject(new Error("Could not prepare OCR image"));
+    img.src = URL.createObjectURL(blob);
   });
 }
 
