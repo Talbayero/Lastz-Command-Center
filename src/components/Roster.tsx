@@ -37,6 +37,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField>("latestScore");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
@@ -106,7 +107,11 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
       return acc;
     }, {});
 
-  const sortedPlayers = [...players].sort((a, b) => {
+  const filteredPlayers = players.filter((player) =>
+    player.name.toLowerCase().includes(searchTerm.trim().toLowerCase())
+  );
+
+  const sortedPlayers = [...filteredPlayers].sort((a, b) => {
     const direction = sortDirection === "asc" ? 1 : -1;
 
     if (sortField === "rank") {
@@ -202,6 +207,22 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
               <span style={avgValueStyle}>{Math.round(players.reduce((sum, p) => sum + p.kills, 0) / (players.length || 1)).toLocaleString()}</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="flex-row justify-between gap-4" style={{ alignItems: 'end' }}>
+        <div className="flex-col gap-2" style={{ minWidth: '320px' }}>
+          <label className="cyber-label" style={{ marginBottom: 0 }}>SEARCH BY NAME</label>
+          <input
+            type="text"
+            className="cyber-input"
+            placeholder="Type a player name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
+          SHOWING {sortedPlayers.length} OF {players.length}
         </div>
       </div>
 
