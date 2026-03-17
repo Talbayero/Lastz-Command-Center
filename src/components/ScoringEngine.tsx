@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 
+const STORAGE_KEY = "lastz-scoring-weights";
+
 const INITIAL_WEIGHTS = {
   kills: 30,
   tech: 25,
@@ -13,7 +15,31 @@ const INITIAL_WEIGHTS = {
 
 export default function ScoringEngine() {
   const [weights, setWeights] = useState(INITIAL_WEIGHTS);
-  
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("Using default weights");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (!stored) {
+        setIsLoaded(true);
+        return;
+      }
+
+      const parsed = JSON.parse(stored);
+      const hasAllKeys = Object.keys(INITIAL_WEIGHTS).every((key) => typeof parsed?.[key] === "number");
+
+      if (hasAllKeys) {
+        setWeights(parsed);
+        setSavedMessage("Restored last saved configuration");
+      }
+    } catch {
+      setSavedMessage("Using default weights");
+    } finally {
+      setIsLoaded(true);
+    }
+  }, []);
+
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
 
   const handleWeightChange = (key: keyof typeof INITIAL_WEIGHTS, value: number) => {
@@ -27,12 +53,37 @@ export default function ScoringEngine() {
     setWeights(prev => ({ ...prev, [key]: cappedValue }));
   };
 
+  const formula = `Score = (Kills x ${weights.kills}%) + (Tech x ${weights.tech}%) + (Hero x ${weights.hero}%) + (Troop x ${weights.troop}%) + (Mod Vehicle x ${weights.modVehicle}%) + (Structure x ${weights.structure}%)`;
+
+  const saveWeights = () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(weights));
+    setSavedMessage("Saved locally and will stay after refresh");
+  };
+
   return (
     <div className="flex-col gap-4">
       <div style={{ backgroundColor: 'rgba(112, 0, 255, 0.05)', padding: '0.75rem', borderRadius: '4px', borderLeft: '3px solid var(--accent-purple)', marginBottom: '0.5rem' }}>
         <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', lineHeight: '1.4', margin: 0 }}>
           <strong style={{ color: 'var(--accent-purple)' }}>RANKING LOGIC:</strong> This engine calculates a weighted score based on individual player stats. Adjust the sliders below to prioritize different combat aspects. The sum must equal 100% for calculation.
         </p>
+      </div>
+
+      <div style={{ backgroundColor: 'rgba(0, 255, 157, 0.05)', padding: '0.85rem', borderRadius: '4px', border: '1px solid rgba(0, 255, 157, 0.18)' }}>
+        <div className="cyber-label" style={{ marginBottom: '0.45rem' }}>ACTIVE FORMULA</div>
+        <p style={{ margin: 0, color: 'var(--text-main)', fontFamily: 'var(--font-mono)', fontSize: '0.74rem', lineHeight: 1.6 }}>
+          {formula}
+        </p>
+      </div>
+
+      <div style={{
+        padding: '0.5rem 0.75rem',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: '4px',
+        color: isLoaded ? 'var(--text-muted)' : 'var(--accent-purple)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.72rem',
+      }}>
+        {isLoaded ? savedMessage : 'Loading last saved configuration...'}
       </div>
 
       <div className="flex-col gap-2">
@@ -140,9 +191,9 @@ export default function ScoringEngine() {
         className="cyber-button primary w-full" 
         style={{ marginTop: '0.5rem' }}
         disabled={total !== 100}
-        onClick={() => alert("Weights updated! Recalculating scores...")}
+        onClick={saveWeights}
       >
-        Apply Weights
+        Save Weights
       </button>
     </div>
   );
