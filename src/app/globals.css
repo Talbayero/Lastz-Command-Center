@@ -178,7 +178,156 @@ h1, h2, h3, h4, h5, h6 {
 .col-span-4 { grid-column: span 3; }
 
 @media (max-width: 1024px) {
-  .dashboard-grid > div {
+  .dashboard-grid > * {
     grid-column: span 12;
+  }
+}
+
+.page-shell {
+  margin-top: 2rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-header-copy {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.page-nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  background-color: var(--bg-input);
+  padding: 4px;
+  border-radius: 8px;
+  max-width: 100%;
+}
+
+.profile-top-grid,
+.profile-main-grid,
+.profile-bottom-grid,
+.duel-main-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.profile-top-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.profile-main-grid {
+  grid-template-columns: 1.4fr 1fr;
+}
+
+.profile-bottom-grid {
+  grid-template-columns: 1.1fr 0.9fr;
+}
+
+.profile-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.duel-main-grid {
+  grid-template-columns: 1.15fr 1fr;
+}
+
+.responsive-table {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1200px) {
+  .profile-main-grid,
+  .profile-bottom-grid,
+  .duel-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .page-shell {
+    margin-top: 1.25rem;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+    line-height: 1.1;
+  }
+
+  h2 {
+    font-size: 1.1rem;
+  }
+
+  h3 {
+    font-size: 1rem;
+  }
+
+  .cyber-card {
+    padding: 1rem;
+  }
+
+  .cyber-button {
+    padding: 0.65rem 0.9rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
+
+  .cyber-input {
+    padding: 0.7rem 0.85rem;
+    font-size: 0.82rem;
+  }
+
+  .page-header {
+    align-items: stretch;
+  }
+
+  .page-nav {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .page-nav .cyber-button {
+    flex: 1 1 140px;
+  }
+
+  .dashboard-grid {
+    gap: 1rem;
+  }
+
+  .profile-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 540px) {
+  .container {
+    padding: 0.8rem;
+  }
+
+  .page-nav .cyber-button {
+    flex: 1 1 calc(50% - 0.5rem);
+  }
+
+  .cyber-card {
+    padding: 0.85rem;
+  }
+
+  .cyber-button {
+    width: 100%;
   }
 }

@@ -495,7 +495,7 @@ export default function AllianceDuelPanel({
         </div>
       </div>
 
-      <div style={twoColumnGridStyle}>
+      <div className="duel-main-grid">
         <section className="cyber-card flex-col gap-4">
           <h3 style={{ color: "var(--accent-purple)" }}>Alliance Requirements</h3>
           <div className="flex-col gap-3">
@@ -1038,12 +1038,6 @@ const summaryHintStyle: React.CSSProperties = {
   color: "var(--text-muted)",
   fontSize: "0.82rem",
   lineHeight: 1.5,
-};
-
-const twoColumnGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1.15fr 1fr",
-  gap: "1rem",
 };
 
 const requirementRowStyle: React.CSSProperties = {

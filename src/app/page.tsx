@@ -209,16 +209,16 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const allPlayerNames = allPlayers.map((player) => player.name);
 
   return (
-    <div className="flex-col gap-6" style={{ marginTop: "2rem" }}>
-      <header className="flex-row justify-between">
-        <div className="flex-row gap-4 items-center">
+    <div className="page-shell flex-col gap-6">
+      <header className="page-header">
+        <div className="page-header-copy flex-row gap-4 items-center">
           <div>
             <h1>Alliance Dashboard</h1>
             <p style={{ color: "var(--text-muted)" }}>Real-time performance metrics and combat analysis.</p>
           </div>
         </div>
 
-        <nav className="flex-row gap-2" style={{ backgroundColor: "var(--bg-input)", padding: "4px", borderRadius: "8px" }}>
+        <nav className="page-nav">
           <Link href="/?view=profile" className={`cyber-button ${currentView === "profile" ? "primary" : ""}`} style={tabLinkStyle}>
             Profile
           </Link>

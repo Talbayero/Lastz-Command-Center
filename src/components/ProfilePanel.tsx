@@ -127,14 +127,14 @@ export default function ProfilePanel({
 
   return (
     <div className="flex-col gap-5">
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "1rem" }}>
+      <div className="profile-top-grid">
         <SummaryCard label="Alliance Rank" value={`#${profile.rank}`} accent="var(--accent-neon)" />
         <SummaryCard label="Current Score" value={Math.round(profile.latestScore).toLocaleString()} accent="var(--accent-purple)" />
         <SummaryCard label="Combat Power" value={combatPower.toLocaleString()} accent="var(--accent-neon)" />
         <SummaryCard label="Last Updated" value={formatDate(profile.updatedAt)} accent="#fff" />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1rem" }}>
+      <div className="profile-main-grid">
         <section className="cyber-card flex-col gap-4">
           <div className="flex-row justify-between gap-4" style={{ alignItems: "end", flexWrap: "wrap" }}>
             <div>
@@ -175,7 +175,7 @@ export default function ProfilePanel({
           {profile.snapshots.length === 0 ? (
             <div style={{ color: "var(--text-muted)" }}>No snapshot history yet.</div>
           ) : (
-            <div style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px", overflow: "hidden" }}>
+            <div className="responsive-table" style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px", overflow: "hidden" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead style={{ backgroundColor: "var(--bg-dark)" }}>
                   <tr>
@@ -201,11 +201,11 @@ export default function ProfilePanel({
         </section>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: "1rem" }}>
+      <div className="profile-bottom-grid">
         <section className="cyber-card flex-col gap-4">
           <h3 style={{ color: "var(--accent-neon)" }}>Profile Controls</h3>
           {message && <div style={messageStyle(message.type)}>{message.text}</div>}
-          <div style={formGridStyle}>
+          <div className="profile-form-grid">
             <Field label="Player Name"><input className="cyber-input" value={formData.name} disabled={!canEditProfile} onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))} /></Field>
             <Field label="Glory War Role">
               <select className="cyber-input" value={formData.gloryWarStatus} disabled={!canEditProfile} onChange={(e) => setFormData((prev) => ({ ...prev, gloryWarStatus: e.target.value }))}>
@@ -290,12 +290,6 @@ const warningStyle: React.CSSProperties = {
   color: "var(--accent-red)",
   fontFamily: "var(--font-mono)",
   fontSize: "0.85rem",
-};
-
-const formGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: "1rem",
 };
 
 const miniLabelStyle: React.CSSProperties = {
