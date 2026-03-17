@@ -9,7 +9,6 @@
     "lint": "eslint",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "capture:pc": "powershell -ExecutionPolicy Bypass -File scripts/capture-lastz-window.ps1",
     "ingest:bom": "node batch_ingest.js",
     "postinstall": "prisma generate"
   },
