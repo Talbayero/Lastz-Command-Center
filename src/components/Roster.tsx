@@ -181,6 +181,13 @@ export default function Roster({
   );
 
   const sortedPlayers = [...filteredPlayers].sort((a, b) => {
+    const aNeedsReview = getCorrectionFields(a).length > 0;
+    const bNeedsReview = getCorrectionFields(b).length > 0;
+
+    if (aNeedsReview !== bNeedsReview) {
+      return aNeedsReview ? -1 : 1;
+    }
+
     const direction = sortDirection === "asc" ? 1 : -1;
 
     if (sortField === "verify") {
