@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import Tesseract from "tesseract.js";
 import prisma from "@/utils/db";
 import {
   ALLIANCE_DUEL_DAYS,
@@ -38,8 +39,9 @@ function isValidScoreType(value: string): value is AllianceDuelScoreType {
 
 async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: string }) {
   const apiKey = process.env.GEMINI_API_KEY;
+  const dataUrl = `data:${input.mimeType};base64,${input.imageBase64}`;
   if (!apiKey) {
-    throw new Error("Missing GEMINI_API_KEY");
+    return parseAllianceDuelImageWithOcr(dataUrl);
   }
 
   const prompt = [
@@ -55,44 +57,45 @@ async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: st
     "If rank is not visible, use null.",
   ].join(" ");
 
-  const response = await fetchGeminiWithRetry(apiKey, {
-    contents: [
-      {
-        parts: [
-          { text: prompt },
-          {
-            inlineData: {
-              mimeType: input.mimeType,
-              data: input.imageBase64,
+  try {
+    const response = await fetchGeminiWithRetry(apiKey, {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: input.mimeType,
+                data: input.imageBase64,
+              },
             },
-          },
-        ],
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
       },
-    ],
-    generationConfig: {
-      responseMimeType: "application/json",
-    },
-  });
+    });
 
-  if (!response.ok) {
-    throw new Error(`Gemini request failed with status ${response.status}`);
+    const data = await response.json();
+    const rawText =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((part: { text?: string }) => part.text ?? "")
+        .join(" ")
+        .trim() ?? "";
+
+    const parsed = parseGeminiJsonResponse(rawText);
+    const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+
+    return entries.map((entry: any) => ({
+      name: String(entry?.name ?? "").trim(),
+      rank: normalizeRank(entry?.rank),
+      score: normalizeScore(entry?.score),
+    }));
+  } catch (error) {
+    console.warn("ALLIANCE DUEL GEMINI FALLBACK TO OCR:", error);
+    return parseAllianceDuelImageWithOcr(dataUrl);
   }
-
-  const data = await response.json();
-  const rawText =
-    data?.candidates?.[0]?.content?.parts
-      ?.map((part: { text?: string }) => part.text ?? "")
-      .join(" ")
-      .trim() ?? "";
-
-  const parsed = parseGeminiJsonResponse(rawText);
-  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
-
-  return entries.map((entry: any) => ({
-    name: String(entry?.name ?? "").trim(),
-    rank: normalizeRank(entry?.rank),
-    score: normalizeScore(entry?.score),
-  }));
 }
 
 async function fetchGeminiWithRetry(apiKey: string, body: Record<string, unknown>) {
@@ -123,6 +126,92 @@ async function fetchGeminiWithRetry(apiKey: string, body: Record<string, unknown
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function parseAllianceDuelImageWithOcr(dataUrl: string) {
+  const result = await Tesseract.recognize(dataUrl, "eng");
+  const ocrWords = (result.data as any)?.words;
+  const words: any[] = Array.isArray(ocrWords) ? ocrWords : [];
+
+  const groupedRows = groupWordsIntoRows(
+    words
+      .map((word) => ({
+        text: String(word.text ?? "").trim(),
+        x0: Number(word.bbox?.x0 ?? 0),
+        y0: Number(word.bbox?.y0 ?? 0),
+        y1: Number(word.bbox?.y1 ?? 0),
+      }))
+      .filter((word) => word.text)
+  );
+
+  const entries = groupedRows
+    .map(parseOcrRow)
+    .filter((entry): entry is { name: string; rank: number | null; score: number } => Boolean(entry && entry.name && entry.score > 0));
+
+  return dedupeEntries(entries);
+}
+
+function groupWordsIntoRows(words: Array<{ text: string; x0: number; y0: number; y1: number }>) {
+  const sorted = words.slice().sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const rows: Array<Array<{ text: string; x0: number; y0: number; y1: number }>> = [];
+
+  for (const word of sorted) {
+    const targetRow = rows.find((row) => {
+      const rowCenter = average(row.map((entry) => (entry.y0 + entry.y1) / 2));
+      const wordCenter = (word.y0 + word.y1) / 2;
+      return Math.abs(rowCenter - wordCenter) <= 24;
+    });
+
+    if (targetRow) {
+      targetRow.push(word);
+    } else {
+      rows.push([word]);
+    }
+  }
+
+  return rows.map((row) => row.sort((a, b) => a.x0 - b.x0));
+}
+
+function parseOcrRow(row: Array<{ text: string; x0: number; y0: number; y1: number }>) {
+  const scoreToken = [...row]
+    .reverse()
+    .find((entry) => /\d[\d,._]{4,}/.test(entry.text) || /^\d{5,}$/.test(entry.text.replace(/[^\d]/g, "")));
+  const score = normalizeScore(scoreToken?.text ?? "");
+  if (score <= 0) return null;
+
+  const rankToken = row.find((entry) => /^\d{1,3}$/.test(entry.text.replace(/[^\d]/g, "")));
+  const rank = normalizeRank(rankToken?.text ?? "");
+
+  const filteredNameParts = row
+    .filter((entry) => {
+      const text = entry.text;
+      const digits = text.replace(/[^\d]/g, "");
+      if (digits.length >= 4) return false;
+      if (/^\[.*\]$/.test(text)) return false;
+      if (/rank|ranking|daily|weekly|alliance|misfits|band/i.test(text)) return false;
+      return /[a-zA-Z]/.test(text);
+    })
+    .map((entry) => entry.text.replace(/[^a-zA-Z0-9]/g, ""))
+    .filter(Boolean);
+
+  const name = filteredNameParts.join(" ").trim();
+  if (!name || name.length < 3) return null;
+
+  return { name, rank, score };
+}
+
+function dedupeEntries(entries: Array<{ name: string; rank: number | null; score: number }>) {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = `${normalizePlayerName(entry.name)}::${entry.score}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function average(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
 }
 
 function parseGeminiJsonResponse(rawText: string) {
