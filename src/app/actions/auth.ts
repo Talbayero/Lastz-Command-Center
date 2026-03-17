@@ -27,6 +27,7 @@ function normalizePlayerName(name: string) {
 export async function signUpUser(input: CredentialsInput) {
   try {
     const playerName = normalizePlayerName(input.playerName);
+    const isBootstrapAdmin = playerName.toLowerCase() === "tedmeister";
     const passwordError = validatePassword(input.password);
 
     if (!playerName) {
@@ -41,13 +42,23 @@ export async function signUpUser(input: CredentialsInput) {
       return { success: false, error: "Passwords do not match." };
     }
 
-    const player = await prisma.player.findFirst({
+    let player = await prisma.player.findFirst({
       where: {
         name: { equals: playerName, mode: "insensitive" },
         alliance: "BOM",
       },
       select: { id: true, name: true },
     });
+
+    if (!player && isBootstrapAdmin) {
+      player = await prisma.player.create({
+        data: {
+          name: "Tedmeister",
+          alliance: "BOM",
+        },
+        select: { id: true, name: true },
+      });
+    }
 
     if (!player) {
       return { success: false, error: "Player not found in BOM roster." };
@@ -69,7 +80,7 @@ export async function signUpUser(input: CredentialsInput) {
       return { success: false, error: "Default roles are not available yet." };
     }
 
-    const roleId = player.name.toLowerCase() === "tedmeister" ? adminRole.id : memberRole.id;
+    const roleId = isBootstrapAdmin ? adminRole.id : memberRole.id;
 
     const user = await prisma.user.create({
       data: {
