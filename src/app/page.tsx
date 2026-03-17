@@ -22,7 +22,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const allPlayers = await prisma.player.findMany({
     orderBy: { name: "asc" },
-    select: { name: true },
+    select: { id: true, name: true },
   });
 
   if (!currentUser) {
@@ -140,13 +140,19 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                   isSystem: role.isSystem,
                   permissions: normalizePermissions(role.permissions),
                 }))}
-                initialUsers={adminUsers.map((user) => ({
-                  id: user.id,
-                  playerName: user.player.name,
-                  roleId: user.roleId,
-                  isActive: user.isActive,
-                  disabledByUser: user.disabledByUser,
-                }))}
+                initialRoster={allPlayers.map((player) => {
+                  const account = adminUsers.find((user) => user.playerId === player.id);
+                  return {
+                    playerId: player.id,
+                    playerName: player.name,
+                    hasAccount: Boolean(account),
+                    userId: account?.id ?? null,
+                    roleId: account?.roleId ?? adminRoles.find((role) => role.name === "Alliance Member")?.id ?? null,
+                    roleName: account?.role.name ?? null,
+                    isActive: account?.isActive ?? true,
+                    disabledByUser: account?.disabledByUser ?? false,
+                  };
+                })}
               />
             )}
           </div>

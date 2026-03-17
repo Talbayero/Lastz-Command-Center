@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { adminUpdateUser, createRole, updateRole } from "@/app/actions/auth";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { adminCreateUserAccount, adminUpdateUser, createRole, updateRole } from "@/app/actions/auth";
 import { permissionKeys, permissionLabels, type RolePermissions } from "@/utils/permissions";
 
 type RoleRecord = {
@@ -12,43 +13,85 @@ type RoleRecord = {
   permissions: RolePermissions;
 };
 
-type UserRecord = {
-  id: string;
+type RosterEntry = {
+  playerId: string;
   playerName: string;
-  roleId: string;
+  hasAccount: boolean;
+  userId: string | null;
+  roleId: string | null;
+  roleName: string | null;
   isActive: boolean;
   disabledByUser: boolean;
 };
 
 export default function AdminPanel({
   initialRoles,
-  initialUsers,
+  initialRoster,
 }: {
   initialRoles: RoleRecord[];
-  initialUsers: UserRecord[];
+  initialRoster: RosterEntry[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [roles, setRoles] = useState(initialRoles);
-  const [users, setUsers] = useState(initialUsers);
+  const [roster, setRoster] = useState(initialRoster);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRolePermissions, setNewRolePermissions] = useState<RolePermissions>(() => emptyRolePermissions());
+  const [newAccountPasswords, setNewAccountPasswords] = useState<Record<string, string>>({});
+  const [userPanelOpen, setUserPanelOpen] = useState(true);
+  const [rolePanelOpen, setRolePanelOpen] = useState(true);
 
-  const saveUser = (user: UserRecord) => {
+  const defaultRoleId = useMemo(
+    () => roles.find((role) => role.name === "Alliance Member")?.id ?? roles[0]?.id ?? "",
+    [roles]
+  );
+
+  const saveUser = (entry: RosterEntry) => {
+    if (!entry.userId || !entry.roleId) return;
+    const userId = entry.userId;
+    const roleId = entry.roleId;
+
     setMessage(null);
     startTransition(async () => {
       const result = await adminUpdateUser({
-        userId: user.id,
-        roleId: user.roleId,
-        isActive: user.isActive,
-        disabledByUser: user.disabledByUser,
+        userId,
+        roleId,
+        isActive: entry.isActive,
+        disabledByUser: entry.disabledByUser,
       });
+
       if (result.success) {
-        setMessage({ type: "success", text: `${user.playerName} updated.` });
+        setMessage({ type: "success", text: `${entry.playerName} updated.` });
         router.refresh();
       } else {
         setMessage({ type: "error", text: result.error || "Failed to update user." });
+      }
+    });
+  };
+
+  const createAccount = (entry: RosterEntry) => {
+    const password = newAccountPasswords[entry.playerId] ?? "";
+    const selectedRoleId = entry.roleId || defaultRoleId;
+    if (!selectedRoleId) {
+      setMessage({ type: "error", text: "No role is available for this account yet." });
+      return;
+    }
+
+    setMessage(null);
+    startTransition(async () => {
+      const result = await adminCreateUserAccount({
+        playerId: entry.playerId,
+        roleId: selectedRoleId,
+        password,
+      });
+
+      if (result.success) {
+        setMessage({ type: "success", text: `${entry.playerName} account created.` });
+        setNewAccountPasswords((prev) => ({ ...prev, [entry.playerId]: "" }));
+        router.refresh();
+      } else {
+        setMessage({ type: "error", text: result.error || "Failed to create account." });
       }
     });
   };
@@ -95,133 +138,174 @@ export default function AdminPanel({
       {message && <div style={messageStyle(message.type)}>{message.text}</div>}
 
       <div className="cyber-card">
-        <h3 style={{ color: "var(--accent-neon)", marginBottom: "1rem" }}>User Management</h3>
-        <div className="flex-col gap-3">
-          {users.map((user) => (
-            <div key={user.id} style={panelStyle}>
-              <div>
-                <div style={{ fontWeight: 700 }}>{user.playerName}</div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>BOM account</div>
-              </div>
+        <button type="button" onClick={() => setUserPanelOpen((prev) => !prev)} style={sectionHeaderStyle}>
+          <span style={{ color: "var(--accent-neon)" }}>USER MANAGEMENT</span>
+          {userPanelOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        </button>
 
-              <select
-                className="cyber-input"
-                value={user.roleId}
-                onChange={(e) =>
-                  setUsers((prev) => prev.map((entry) => (entry.id === user.id ? { ...entry, roleId: e.target.value } : entry)))
-                }
-                style={{ minWidth: "180px" }}
-              >
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>{role.name}</option>
-                ))}
-              </select>
+        {userPanelOpen && (
+          <div className="flex-col gap-3">
+            {roster.map((entry) => (
+              <div key={entry.playerId} style={panelStyle}>
+                <div style={{ minWidth: "200px" }}>
+                  <div style={{ fontWeight: 700 }}>{entry.playerName}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                    {entry.hasAccount ? `Role: ${entry.roleName ?? "Unassigned"}` : "No account yet"}
+                  </div>
+                </div>
 
-              <label style={toggleLabelStyle}>
-                <input
-                  type="checkbox"
-                  checked={user.isActive}
+                <select
+                  className="cyber-input"
+                  value={entry.roleId || defaultRoleId}
                   onChange={(e) =>
-                    setUsers((prev) => prev.map((entry) => (entry.id === user.id ? { ...entry, isActive: e.target.checked } : entry)))
-                  }
-                />
-                Active
-              </label>
-
-              <label style={toggleLabelStyle}>
-                <input
-                  type="checkbox"
-                  checked={!user.disabledByUser}
-                  onChange={(e) =>
-                    setUsers((prev) =>
-                      prev.map((entry) =>
-                        entry.id === user.id ? { ...entry, disabledByUser: !e.target.checked } : entry
-                      )
+                    setRoster((prev) =>
+                      prev.map((item) => (item.playerId === entry.playerId ? { ...item, roleId: e.target.value } : item))
                     )
                   }
-                />
-                User Enabled
-              </label>
+                  style={{ minWidth: "180px" }}
+                >
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>{role.name}</option>
+                  ))}
+                </select>
 
-              <button className="cyber-button" onClick={() => saveUser(user)} disabled={isPending}>
-                SAVE USER
-              </button>
-            </div>
-          ))}
-        </div>
+                {entry.hasAccount ? (
+                  <>
+                    <label style={toggleLabelStyle}>
+                      <input
+                        type="checkbox"
+                        checked={entry.isActive}
+                        onChange={(e) =>
+                          setRoster((prev) =>
+                            prev.map((item) =>
+                              item.playerId === entry.playerId ? { ...item, isActive: e.target.checked } : item
+                            )
+                          )
+                        }
+                      />
+                      Active
+                    </label>
+
+                    <label style={toggleLabelStyle}>
+                      <input
+                        type="checkbox"
+                        checked={!entry.disabledByUser}
+                        onChange={(e) =>
+                          setRoster((prev) =>
+                            prev.map((item) =>
+                              item.playerId === entry.playerId ? { ...item, disabledByUser: !e.target.checked } : item
+                            )
+                          )
+                        }
+                      />
+                      User Enabled
+                    </label>
+
+                    <button className="cyber-button" onClick={() => saveUser(entry)} disabled={isPending}>
+                      SAVE USER
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="password"
+                      className="cyber-input"
+                      placeholder="Temporary password"
+                      value={newAccountPasswords[entry.playerId] ?? ""}
+                      onChange={(e) =>
+                        setNewAccountPasswords((prev) => ({ ...prev, [entry.playerId]: e.target.value }))
+                      }
+                      style={{ minWidth: "180px" }}
+                    />
+                    <button className="cyber-button primary" onClick={() => createAccount(entry)} disabled={isPending}>
+                      CREATE ACCOUNT
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="cyber-card">
-        <h3 style={{ color: "var(--accent-purple)", marginBottom: "1rem" }}>Role Management</h3>
+        <button type="button" onClick={() => setRolePanelOpen((prev) => !prev)} style={sectionHeaderStyle}>
+          <span style={{ color: "var(--accent-purple)" }}>ROLE MANAGEMENT</span>
+          {rolePanelOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        </button>
 
-        <div style={{ ...panelStyle, marginBottom: "1rem", alignItems: "start" }}>
-          <div className="flex-col gap-3" style={{ flex: 1 }}>
-            <input
-              className="cyber-input"
-              placeholder="New role name"
-              value={newRoleName}
-              onChange={(e) => setNewRoleName(e.target.value)}
-            />
-            <div style={permissionGridStyle}>
-              {permissionKeys.map((key) => (
-                <label key={key} style={toggleLabelStyle}>
-                  <input
-                    type="checkbox"
-                    checked={newRolePermissions[key]}
-                    onChange={(e) => setNewRolePermissions((prev) => ({ ...prev, [key]: e.target.checked }))}
-                  />
-                  {permissionLabels[key]}
-                </label>
-              ))}
-            </div>
-          </div>
-          <button className="cyber-button primary" onClick={addRole} disabled={isPending}>
-            CREATE ROLE
-          </button>
-        </div>
-
-        <div className="flex-col gap-4">
-          {roles.map((role) => (
-            <div key={role.id} style={panelStyle}>
-              <div className="flex-col gap-2" style={{ flex: 1 }}>
+        {rolePanelOpen && (
+          <>
+            <div style={{ ...panelStyle, marginBottom: "1rem", alignItems: "start" }}>
+              <div className="flex-col gap-3" style={{ flex: 1 }}>
                 <input
                   className="cyber-input"
-                  value={role.name}
-                  disabled={role.isSystem}
-                  onChange={(e) =>
-                    setRoles((prev) => prev.map((entry) => (entry.id === role.id ? { ...entry, name: e.target.value } : entry)))
-                  }
+                  placeholder="New role name"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
                 />
                 <div style={permissionGridStyle}>
                   {permissionKeys.map((key) => (
                     <label key={key} style={toggleLabelStyle}>
                       <input
                         type="checkbox"
-                        checked={role.permissions[key]}
-                        onChange={(e) =>
-                          setRoles((prev) =>
-                            prev.map((entry) =>
-                              entry.id === role.id
-                                ? {
-                                    ...entry,
-                                    permissions: { ...entry.permissions, [key]: e.target.checked },
-                                  }
-                                : entry
-                            )
-                          )
-                        }
+                        checked={newRolePermissions[key]}
+                        onChange={(e) => setNewRolePermissions((prev) => ({ ...prev, [key]: e.target.checked }))}
                       />
                       {permissionLabels[key]}
                     </label>
                   ))}
                 </div>
               </div>
-              <button className="cyber-button" onClick={() => saveRole(role)} disabled={isPending}>
-                SAVE ROLE
+              <button className="cyber-button primary" onClick={addRole} disabled={isPending}>
+                CREATE ROLE
               </button>
             </div>
-          ))}
-        </div>
+
+            <div className="flex-col gap-4">
+              {roles.map((role) => (
+                <div key={role.id} style={panelStyle}>
+                  <div className="flex-col gap-2" style={{ flex: 1 }}>
+                    <input
+                      className="cyber-input"
+                      value={role.name}
+                      disabled={role.isSystem}
+                      onChange={(e) =>
+                        setRoles((prev) => prev.map((entry) => (entry.id === role.id ? { ...entry, name: e.target.value } : entry)))
+                      }
+                    />
+                    <div style={permissionGridStyle}>
+                      {permissionKeys.map((key) => (
+                        <label key={key} style={toggleLabelStyle}>
+                          <input
+                            type="checkbox"
+                            checked={role.permissions[key]}
+                            onChange={(e) =>
+                              setRoles((prev) =>
+                                prev.map((entry) =>
+                                  entry.id === role.id
+                                    ? {
+                                        ...entry,
+                                        permissions: { ...entry.permissions, [key]: e.target.checked },
+                                      }
+                                    : entry
+                                )
+                              )
+                            }
+                          />
+                          {permissionLabels[key]}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <button className="cyber-button" onClick={() => saveRole(role)} disabled={isPending}>
+                    SAVE ROLE
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -240,6 +324,21 @@ function emptyRolePermissions(): RolePermissions {
     manageRoles: false,
   };
 }
+
+const sectionHeaderStyle: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "0",
+  marginBottom: "1rem",
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  fontFamily: "var(--font-mono)",
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+};
 
 const panelStyle: React.CSSProperties = {
   display: "flex",

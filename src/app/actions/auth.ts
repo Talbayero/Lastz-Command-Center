@@ -240,6 +240,44 @@ export async function adminUpdateUser(input: {
   }
 }
 
+export async function adminCreateUserAccount(input: {
+  playerId: string;
+  roleId: string;
+  password: string;
+}) {
+  try {
+    await requirePermission("manageUsers");
+
+    const passwordError = validatePassword(input.password);
+    if (passwordError) {
+      return { success: false, error: passwordError };
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { playerId: input.playerId },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      return { success: false, error: "That player already has an account." };
+    }
+
+    await prisma.user.create({
+      data: {
+        playerId: input.playerId,
+        roleId: input.roleId,
+        passwordHash: hashPassword(input.password),
+      },
+    });
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("ADMIN CREATE USER ERROR:", error);
+    return { success: false, error: error.message || "Failed to create account." };
+  }
+}
+
 export async function createRole(input: { name: string; permissions: Partial<Record<PermissionKey, boolean>> }) {
   try {
     await requirePermission("manageRoles");
