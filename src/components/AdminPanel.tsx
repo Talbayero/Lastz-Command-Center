@@ -46,11 +46,21 @@ export default function AdminPanel({
   const [newRolePermissions, setNewRolePermissions] = useState<RolePermissions>(() => emptyRolePermissions());
   const [userPanelOpen, setUserPanelOpen] = useState(true);
   const [rolePanelOpen, setRolePanelOpen] = useState(true);
+  const [userSearch, setUserSearch] = useState("");
 
   const defaultRoleId = useMemo(
     () => roles.find((role) => role.name === "Alliance Member")?.id ?? roles[0]?.id ?? "",
     [roles]
   );
+
+  const filteredRoster = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    if (!query) {
+      return roster;
+    }
+
+    return roster.filter((entry) => entry.playerName.toLowerCase().includes(query));
+  }, [roster, userSearch]);
 
   useEffect(() => {
     setRoles(initialRoles);
@@ -173,7 +183,22 @@ export default function AdminPanel({
 
         {userPanelOpen && (
           <div className="flex-col gap-3">
-            {roster.map((entry) => (
+            <div className="flex-row justify-between gap-4 items-end" style={{ marginBottom: "0.5rem", flexWrap: "wrap" }}>
+              <div className="flex-col gap-2" style={{ minWidth: "280px", flex: 1 }}>
+                <label className="cyber-label">SEARCH USER</label>
+                <input
+                  className="cyber-input"
+                  placeholder="Type a player name..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                />
+              </div>
+              <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                SHOWING {filteredRoster.length} OF {roster.length}
+              </div>
+            </div>
+
+            {filteredRoster.map((entry) => (
               <div key={entry.playerId} style={panelStyle}>
                 {(() => {
                   const isCurrentUser = entry.userId === currentUserId;
