@@ -136,6 +136,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
               <Roster
                 initialPlayers={rosterData}
                 canEditRoster={hasPermission(currentUser, "editRoster")}
+                canExportRoster={hasPermission(currentUser, "exportRoster")}
                 canDeleteRosterMembers={hasPermission(currentUser, "deleteRosterMembers")}
                 canEditPlayerNames={hasPermission(currentUser, "editPlayerNames")}
               />

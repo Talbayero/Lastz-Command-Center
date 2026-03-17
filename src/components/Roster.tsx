@@ -79,11 +79,13 @@ export default function Roster({
   canEditRoster = true,
   canDeleteRosterMembers = true,
   canEditPlayerNames = true,
+  canExportRoster = false,
 }: {
   initialPlayers: PlayerData[];
   canEditRoster?: boolean;
   canDeleteRosterMembers?: boolean;
   canEditPlayerNames?: boolean;
+  canExportRoster?: boolean;
 }) {
   const router = useRouter();
   const [players, setPlayers] = useState<PlayerData[]>(initialPlayers);
@@ -167,6 +169,66 @@ export default function Roster({
 
     setSortField(field);
     setSortDirection(field === "name" || field === "gloryWarStatus" ? "asc" : "desc");
+  };
+
+  const exportRoster = () => {
+    const headers = [
+      "Rank",
+      "Name",
+      "Needs Verification",
+      "Combat Power",
+      "March 1",
+      "March 2",
+      "March 3",
+      "March 4",
+      "Glory War",
+      "Tech Power",
+      "Hero Power",
+      "Troop Power",
+      "Mod Vehicle",
+      "Structure",
+      "Kills",
+      "Score",
+    ];
+
+    const rows = sortedPlayers.map((player) => [
+      scoreRankings[player.id],
+      player.name,
+      getCorrectionFields(player).length > 0 ? "Yes" : "No",
+      player.combatPower,
+      player.march1Power,
+      player.march2Power,
+      player.march3Power,
+      player.march4Power,
+      player.gloryWarStatus,
+      player.techPower,
+      player.heroPower,
+      player.troopPower,
+      player.modVehiclePower,
+      player.structurePower,
+      player.kills,
+      Math.round(player.latestScore),
+    ]);
+
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`)
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const dateTag = new Date().toISOString().slice(0, 10);
+
+    link.href = url;
+    link.setAttribute("download", `bom-roster-${dateTag}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   const scoreRankings = [...players]
@@ -328,6 +390,16 @@ export default function Roster({
           />
         </div>
         <div className="flex-row gap-4 items-center">
+          {canExportRoster && (
+            <button
+              type="button"
+              className="cyber-button"
+              onClick={exportRoster}
+              style={{ padding: '0.45rem 0.8rem', fontSize: '0.72rem' }}
+            >
+              EXPORT ROSTER
+            </button>
+          )}
           <button
             type="button"
             className="cyber-button"

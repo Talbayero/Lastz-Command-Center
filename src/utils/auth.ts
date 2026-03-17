@@ -23,6 +23,7 @@ const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions
       viewDashboard: true,
       uploadProfile: true,
       editRoster: true,
+      exportRoster: true,
       deleteRosterMembers: true,
       editPlayerNames: true,
       manageBugs: true,
@@ -38,6 +39,7 @@ const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions
       viewDashboard: true,
       uploadProfile: true,
       editRoster: false,
+      exportRoster: false,
       deleteRosterMembers: false,
       editPlayerNames: false,
       manageBugs: false,
@@ -53,6 +55,7 @@ const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions
       viewDashboard: true,
       uploadProfile: true,
       editRoster: true,
+      exportRoster: true,
       deleteRosterMembers: true,
       editPlayerNames: true,
       manageBugs: false,
@@ -66,7 +69,7 @@ const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions
 export async function ensureSystemRoles() {
   const existingRoles = await prisma.role.findMany({
     where: { name: { in: defaultRoleDefinitions.map((role) => role.name) } },
-    select: { name: true },
+    select: { id: true, name: true, permissions: true },
   });
 
   const existingNames = new Set(existingRoles.map((role) => role.name));
@@ -79,6 +82,22 @@ export async function ensureSystemRoles() {
         permissions: role.permissions,
         isSystem: role.isSystem,
       })),
+    });
+  }
+
+  for (const role of existingRoles) {
+    const definition = defaultRoleDefinitions.find((entry) => entry.name === role.name);
+    if (!definition) continue;
+
+    const normalized = normalizePermissions(role.permissions);
+    const mergedPermissions = { ...definition.permissions, ...normalized };
+
+    const needsUpdate = permissionKeys.some((key) => normalized[key] !== mergedPermissions[key]);
+    if (!needsUpdate) continue;
+
+    await prisma.role.update({
+      where: { id: role.id },
+      data: { permissions: mergedPermissions },
     });
   }
 }

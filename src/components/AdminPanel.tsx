@@ -411,6 +411,7 @@ function emptyRolePermissions(): RolePermissions {
     viewDashboard: false,
     uploadProfile: false,
     editRoster: false,
+    exportRoster: false,
     deleteRosterMembers: false,
     editPlayerNames: false,
     manageBugs: false,
