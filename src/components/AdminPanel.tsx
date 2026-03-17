@@ -61,6 +61,7 @@ export default function AdminPanel({
     if (!entry.userId || !entry.roleId) return;
     const userId = entry.userId;
     const roleId = entry.roleId;
+    const roleName = roles.find((role) => role.id === roleId)?.name ?? entry.roleName;
 
     setMessage(null);
     startTransition(async () => {
@@ -72,8 +73,20 @@ export default function AdminPanel({
       });
 
       if (result.success) {
+        setRoster((prev) =>
+          prev.map((item) =>
+            item.userId === userId
+              ? {
+                  ...item,
+                  roleId,
+                  roleName,
+                  isActive: entry.isActive,
+                  disabledByUser: entry.disabledByUser,
+                }
+              : item
+          )
+        );
         setMessage({ type: "success", text: `${entry.playerName} updated.` });
-        router.refresh();
       } else {
         setMessage({ type: "error", text: result.error || "Failed to update user." });
       }
