@@ -95,9 +95,19 @@ export async function ensureSystemRoles() {
     const definition = defaultRoleDefinitions.find((entry) => entry.name === role.name);
     if (!definition) continue;
 
-    const normalized = normalizePermissions(role.permissions);
-    const mergedPermissions = { ...definition.permissions, ...normalized };
+    const rawPermissions =
+      role.permissions && typeof role.permissions === "object"
+        ? (role.permissions as Record<string, unknown>)
+        : {};
 
+    const mergedPermissions = { ...definition.permissions };
+    for (const key of permissionKeys) {
+      if (typeof rawPermissions[key] === "boolean") {
+        mergedPermissions[key] = rawPermissions[key] as boolean;
+      }
+    }
+
+    const normalized = normalizePermissions(role.permissions);
     const needsUpdate = permissionKeys.some((key) => normalized[key] !== mergedPermissions[key]);
     if (!needsUpdate) continue;
 
