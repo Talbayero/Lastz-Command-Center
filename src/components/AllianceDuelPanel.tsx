@@ -188,87 +188,85 @@ export default function AllianceDuelPanel({
     });
   };
 
-  const uploadScreenshot = async (file: File) => {
-    setMessage(null);
-    const imageBase64 = await fileToBase64(file);
-    startTransition(async () => {
-      const result = await processAllianceDuelScreenshot({
-        imageBase64,
-        mimeType: file.type || "image/png",
-        scoreType: activeScoreType,
-        dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
-      });
+  const applyUpdatedPlayers = (
+    currentPlayers: DuelPlayer[],
+    updatedPlayers: Array<{ playerId: string; score: number; rank: number | null }>
+  ) =>
+    currentPlayers.map((player) => {
+      const updated = updatedPlayers.find((entry) => entry.playerId === player.id);
+      if (!updated) return player;
 
-      if (!result.success) {
-        setMessage({ type: "error", text: result.error || "Failed to process screenshot." });
-        return;
+      return {
+        ...player,
+        scores: {
+          ...player.scores,
+          [activeScoreType]:
+            activeScoreType === "daily"
+              ? {
+                  ...player.scores.daily,
+                  [activeDayKey]: {
+                    score: updated.score,
+                    rank: updated.rank,
+                  },
+                }
+              : {
+                  score: updated.score,
+                  rank: updated.rank,
+                },
+        },
+      };
+    });
+
+  const uploadScreenshots = async (files: FileList | File[]) => {
+    setMessage(null);
+
+    const fileList = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (fileList.length === 0) {
+      setMessage({ type: "error", text: "Select at least one image to upload." });
+      return;
+    }
+
+    startTransition(async () => {
+      let nextPlayers = players;
+      let totalAppliedCount = 0;
+      const unmatchedNames = new Set<string>();
+
+      for (const file of fileList) {
+        const imageBase64 = await fileToBase64(file);
+        const result = await processAllianceDuelScreenshot({
+          imageBase64,
+          mimeType: file.type || "image/png",
+          scoreType: activeScoreType,
+          dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
+        });
+
+        if (!result.success) {
+          setMessage({
+            type: "error",
+            text:
+              fileList.length > 1
+                ? `Stopped on ${file.name}: ${result.error || "Failed to process screenshot."}`
+                : result.error || "Failed to process screenshot.",
+          });
+          return;
+        }
+
+        totalAppliedCount += result.appliedCount ?? 0;
+        for (const name of result.unmatchedNames ?? []) {
+          unmatchedNames.add(name);
+        }
+
+        nextPlayers = applyUpdatedPlayers(nextPlayers, result.updatedPlayers ?? []);
       }
 
-      const updatedPlayers = result.updatedPlayers ?? [];
-      const unmatchedNames = result.unmatchedNames ?? [];
-
-      setPlayers((prev) =>
-        prev.map((player) => {
-          const updated = updatedPlayers.find((entry) => entry.playerId === player.id);
-          if (!updated) return player;
-
-          return {
-            ...player,
-            scores: {
-              ...player.scores,
-              [activeScoreType]:
-                activeScoreType === "daily"
-                  ? {
-                      ...player.scores.daily,
-                      [activeDayKey]: {
-                        score: updated.score,
-                        rank: updated.rank,
-                      },
-                    }
-                  : {
-                      score: updated.score,
-                      rank: updated.rank,
-                    },
-            },
-          };
-        })
-      );
-
-      setManualDrafts(buildManualDrafts(
-        players.map((player) => {
-          const updated = updatedPlayers.find((entry) => entry.playerId === player.id);
-          if (!updated) return player;
-
-          return {
-            ...player,
-            scores: {
-              ...player.scores,
-              [activeScoreType]:
-                activeScoreType === "daily"
-                  ? {
-                      ...player.scores.daily,
-                      [activeDayKey]: {
-                        score: updated.score,
-                        rank: updated.rank,
-                      },
-                    }
-                  : {
-                      score: updated.score,
-                      rank: updated.rank,
-                    },
-            },
-          };
-        }),
-        activeScoreType,
-        activeDayKey
-      ));
-
+      setPlayers(nextPlayers);
+      setManualDrafts(buildManualDrafts(nextPlayers, activeScoreType, activeDayKey));
       setMessage({
         type: "success",
         text:
-          unmatchedNames.length > 0
-            ? `Updated ${result.appliedCount} players. Unmatched: ${unmatchedNames.join(", ")}`
-            : `Updated ${result.appliedCount} players from screenshot.`,
+          unmatchedNames.size > 0
+            ? `Updated ${totalAppliedCount} players from ${fileList.length} screenshot${fileList.length === 1 ? "" : "s"}. Unmatched: ${Array.from(unmatchedNames).join(", ")}`
+            : `Updated ${totalAppliedCount} players from ${fileList.length} screenshot${fileList.length === 1 ? "" : "s"}.`,
       });
     });
   };
@@ -409,18 +407,19 @@ export default function AllianceDuelPanel({
               ) : (
                 <div className="flex-col gap-3" style={{ alignItems: "center" }}>
                   <Upload size={28} style={{ color: "var(--text-muted)" }} />
-                  <span>Click or drag alliance duel screenshot here</span>
+                  <span>Click or drag alliance duel screenshots here</span>
                 </div>
               )}
               <input
                 type="file"
                 accept="image/*"
+                multiple
                 style={{ display: "none" }}
                 disabled={isPending}
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    void uploadScreenshot(file);
+                  const files = e.target.files;
+                  if (files && files.length > 0) {
+                    void uploadScreenshots(files);
                   }
                   e.currentTarget.value = "";
                 }}
