@@ -349,9 +349,9 @@ export default function AllianceDuelPanel({
               const requirement = requirementDraft[dayKey];
               return (
                 <div key={dayKey} style={requirementRowStyle}>
-                  <div style={{ minWidth: "80px" }}>
+                  <div style={{ minWidth: "76px" }}>
                     <div style={summaryLabelStyle}>{dayKey}</div>
-                    <div style={{ color: "var(--text-main)", fontWeight: 700 }}>{requirement.eventName}</div>
+                    <div style={{ color: "var(--text-main)", fontWeight: 700, fontSize: "0.95rem" }}>{requirement.eventName}</div>
                   </div>
 
                   {canManage ? (
@@ -365,7 +365,7 @@ export default function AllianceDuelPanel({
                             [dayKey]: { ...prev[dayKey], eventName: e.target.value },
                           }))
                         }
-                        style={{ minWidth: "220px" }}
+                        style={{ minWidth: "180px", flex: 1 }}
                       />
                       <input
                         className="cyber-input"
@@ -377,9 +377,9 @@ export default function AllianceDuelPanel({
                             [dayKey]: { ...prev[dayKey], minimumScore: Number(e.target.value) || 0 },
                           }))
                         }
-                        style={{ width: "140px" }}
+                        style={{ width: "120px" }}
                       />
-                      <button className="cyber-button" onClick={() => saveRequirement(dayKey)} disabled={isPending}>
+                      <button className="cyber-button" onClick={() => saveRequirement(dayKey)} disabled={isPending} style={{ minWidth: "78px" }}>
                         SAVE
                       </button>
                     </>
@@ -594,7 +594,7 @@ const requirementRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.75rem",
-  padding: "0.9rem",
+  padding: "0.7rem 0.85rem",
   backgroundColor: "var(--bg-input)",
   borderRadius: "6px",
   border: "1px solid var(--border-subtle)",
