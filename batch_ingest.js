@@ -7,6 +7,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 const BOM_DIR = "C:\\Users\\Teddy A\\OneDrive\\Escritorio\\BOM";
+const GEMINI_MODEL = "gemini-2.5-flash";
 const SCORE_WEIGHTS = {
   kills: 0.30,
   tech: 0.25,
@@ -15,6 +16,10 @@ const SCORE_WEIGHTS = {
   structure: 0.05,
   modVehicle: 0.05,
 };
+
+function normalizeName(value) {
+  return value.replace(/[^a-zA-Z0-9 '\-]/g, "").replace(/\s+/g, " ").trim();
+}
 
 function parseProfile(text) {
   const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -35,17 +40,6 @@ function parseProfile(text) {
   };
 
   const subStatSum = Object.values(powerStats).reduce((sum, value) => sum + value, 0);
-
-  let rawNameLine = lines[0] || "";
-  let name = rawNameLine
-    .replace(/[^\w\s]/g, "")
-    .replace(/^(iB|B|3|S|G|8)\s+/, "")
-    .split(/\s+/)[0] || `Unknown_Player_${Date.now()}`;
-
-  name = name.replace(/[^a-zA-Z]/g, "");
-  if (name.length < 3) {
-    name = `Unknown_${Math.floor(Math.random() * 100000)}`;
-  }
 
   const structureIdx = text.toLowerCase().indexOf("structure power");
   const headerText = structureIdx > 0 ? text.substring(0, structureIdx) : lines.slice(0, 5).join("\n");
@@ -80,7 +74,67 @@ function parseProfile(text) {
     (powerStats.structure * SCORE_WEIGHTS.structure) +
     (powerStats.modVehicle * SCORE_WEIGHTS.modVehicle);
 
-  return { name, kills, totalPower, powerStats, rawScore };
+  return { kills, totalPower, powerStats, rawScore };
+}
+
+async function extractNameWithGemini(filePath) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return "";
+  }
+
+  const imageBase64 = fs.readFileSync(filePath, { encoding: "base64" });
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: "Read only the player name from this Last Z profile screenshot. Return only the exact player name with no explanation. If uncertain, return UNKNOWN.",
+              },
+              {
+                inlineData: {
+                  mimeType: "image/png",
+                  data: imageBase64,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Gemini request failed (${response.status})`);
+  }
+
+  const data = await response.json();
+  const rawText =
+    data?.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join(" ")
+      .trim() ?? "";
+
+  const cleaned = normalizeName(rawText);
+  if (!cleaned || cleaned.toUpperCase() === "UNKNOWN") {
+    return "";
+  }
+
+  return cleaned;
+}
+
+async function clearRosterData() {
+  await prisma.$transaction(async (tx) => {
+    await tx.snapshot.deleteMany({});
+    await tx.player.deleteMany({});
+  });
 }
 
 async function upsertPlayerSnapshot(data, fallbackName) {
@@ -135,6 +189,7 @@ async function upsertPlayerSnapshot(data, fallbackName) {
 
 async function ingest() {
   const files = fs.readdirSync(BOM_DIR).filter((file) => file.toLowerCase().endsWith(".png"));
+  await clearRosterData();
   console.log(`Starting ingestion of ${files.length} BOM screenshots...`);
 
   for (let index = 0; index < files.length; index += 1) {
@@ -145,8 +200,13 @@ async function ingest() {
     try {
       const result = await Tesseract.recognize(filePath, "eng");
       const parsed = parseProfile(result.data.text);
+      const geminiName = await extractNameWithGemini(filePath).catch(() => "");
       const fallbackName = `Unknown_${path.parse(file).name.replace(/\s+/g, "_")}`;
-      const finalName = await upsertPlayerSnapshot(parsed, fallbackName);
+      const enrichedData = {
+        ...parsed,
+        name: geminiName || fallbackName,
+      };
+      const finalName = await upsertPlayerSnapshot(enrichedData, fallbackName);
       process.stdout.write(`SUCCESS: ${finalName} (Score: ${Math.round(parsed.rawScore).toLocaleString()})\n`);
     } catch (error) {
       console.error(`FAILED: ${error.message}`);
