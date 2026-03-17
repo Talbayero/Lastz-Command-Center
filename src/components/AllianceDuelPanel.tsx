@@ -736,6 +736,7 @@ function getReviewEntryKey(entry: UploadReviewEntry) {
 }
 
 async function fileToBase64(file: File) {
+  const optimizedBlob = await optimizeUploadImage(file);
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -747,7 +748,42 @@ async function fileToBase64(file: File) {
       resolve(result.split(",")[1] ?? "");
     };
     reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(optimizedBlob);
+  });
+}
+
+async function optimizeUploadImage(file: File): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxWidth = 900;
+      const maxHeight = 1600;
+      const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => resolve(blob ?? file),
+        "image/jpeg",
+        0.82
+      );
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
   });
 }
 
