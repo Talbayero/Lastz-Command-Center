@@ -9,6 +9,7 @@ export async function updateRoster(players: any[]) {
 
     await prisma.$transaction(async (tx) => {
       for (const p of players) {
+        const name = String(p.name ?? "").trim();
         const kills = Number(p.kills) || 0;
         const tech = Number(p.techPower) || 0;
         const hero = Number(p.heroPower) || 0;
@@ -30,9 +31,26 @@ export async function updateRoster(players: any[]) {
 
         const totalPower = Number(p.totalPower) || (tech + hero + troop + structure + modVehicle);
 
+        if (!name) {
+          throw new Error("Player name cannot be empty.");
+        }
+
+        const duplicatePlayer = await tx.player.findFirst({
+          where: {
+            name,
+            NOT: { id: p.id },
+          },
+          select: { id: true },
+        });
+
+        if (duplicatePlayer) {
+          throw new Error(`Player name "${name}" is already in use.`);
+        }
+
         await tx.player.update({
           where: { id: p.id },
           data: {
+            name,
             totalPower,
             kills,
             march1Power,

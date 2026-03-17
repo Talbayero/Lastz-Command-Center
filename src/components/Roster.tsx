@@ -388,7 +388,16 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                     </span>
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>
-                    {p.name}
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={p.name}
+                        onChange={(e) => handleInputChange(p.id, "name", e.target.value)}
+                        style={{ ...inputStyle, width: "180px" }}
+                      />
+                    ) : (
+                      p.name
+                    )}
                   </td>
                   <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', color: 'var(--accent-neon)', fontWeight: 700 }}>
                     {Number(p.combatPower).toLocaleString()}
