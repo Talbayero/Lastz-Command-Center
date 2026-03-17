@@ -2,9 +2,12 @@
 
 import prisma from "@/utils/db";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "@/utils/auth";
 
 export async function savePlayerData(data: any) {
   try {
+    await requirePermission("uploadProfile");
+
     const name = (data.name ?? "").trim();
     const kills = Math.round(Number(data.kills ?? 0) || 0);
 

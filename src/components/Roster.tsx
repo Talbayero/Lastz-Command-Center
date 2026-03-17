@@ -66,7 +66,17 @@ function renderStatValue(value: number) {
   );
 }
 
-export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[] }) {
+export default function Roster({
+  initialPlayers,
+  canEditRoster = true,
+  canDeleteRosterMembers = true,
+  canEditPlayerNames = true,
+}: {
+  initialPlayers: PlayerData[];
+  canEditRoster?: boolean;
+  canDeleteRosterMembers?: boolean;
+  canEditPlayerNames?: boolean;
+}) {
   const router = useRouter();
   const [players, setPlayers] = useState<PlayerData[]>(initialPlayers);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
@@ -93,6 +103,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
   };
 
   const onSave = async () => {
+    if (!canEditRoster) return;
     setIsSaving(true);
     setMessage(null);
     const result = await updateRoster(players);
@@ -109,6 +120,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
   };
 
   const toggleEdit = (id: string) => {
+    if (!canEditRoster) return;
     if (editingRowId === id) {
       setEditingRowId(null);
     } else {
@@ -332,37 +344,41 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                 >
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <button 
-                        onClick={() => toggleEdit(p.id)}
-                        style={{ 
-                          background: 'transparent', 
-                          border: 'none', 
-                          color: isEditing ? 'var(--accent-purple)' : 'var(--text-muted)',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                      >
-                        {isEditing ? <Check size={18} /> : <Pencil size={18} />}
-                      </button>
-                      <button
-                        onClick={() => onDelete(p)}
-                        disabled={isSaving}
-                        title={`Delete ${p.name}`}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: 'var(--accent-red)',
-                          cursor: isSaving ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          opacity: isSaving ? 0.5 : 1,
-                        }}
-                      >
-                        <Trash2 size={17} />
-                      </button>
+                      {canEditRoster && (
+                        <button 
+                          onClick={() => toggleEdit(p.id)}
+                          style={{ 
+                            background: 'transparent', 
+                            border: 'none', 
+                            color: isEditing ? 'var(--accent-purple)' : 'var(--text-muted)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          {isEditing ? <Check size={18} /> : <Pencil size={18} />}
+                        </button>
+                      )}
+                      {canDeleteRosterMembers && (
+                        <button
+                          onClick={() => onDelete(p)}
+                          disabled={isSaving}
+                          title={`Delete ${p.name}`}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--accent-red)',
+                            cursor: isSaving ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: isSaving ? 0.5 : 1,
+                          }}
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      )}
                     </div>
                   </td>
                   <td style={tdStyle}>
@@ -388,7 +404,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                     </span>
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 600 }}>
-                    {isEditing ? (
+                    {isEditing && canEditPlayerNames ? (
                       <input
                         type="text"
                         value={p.name}
@@ -404,28 +420,28 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                   </td>
                   {showMarchColumns && (
                     <td style={tdStyle}>
-                      {isEditing
+                      {isEditing && canEditRoster
                         ? <input type="number" value={p.march1Power} onChange={(e) => handleInputChange(p.id, 'march1Power', Number(e.target.value))} style={inputStyle} />
                         : Number(p.march1Power).toLocaleString()}
                     </td>
                   )}
                   {showMarchColumns && (
                     <td style={tdStyle}>
-                      {isEditing
+                      {isEditing && canEditRoster
                         ? <input type="number" value={p.march2Power} onChange={(e) => handleInputChange(p.id, 'march2Power', Number(e.target.value))} style={inputStyle} />
                         : Number(p.march2Power).toLocaleString()}
                     </td>
                   )}
                   {showMarchColumns && (
                     <td style={tdStyle}>
-                      {isEditing
+                      {isEditing && canEditRoster
                         ? <input type="number" value={p.march3Power} onChange={(e) => handleInputChange(p.id, 'march3Power', Number(e.target.value))} style={inputStyle} />
                         : Number(p.march3Power).toLocaleString()}
                     </td>
                   )}
                   {showMarchColumns && (
                     <td style={tdStyle}>
-                      {isEditing
+                      {isEditing && canEditRoster
                         ? <input type="number" value={p.march4Power} onChange={(e) => handleInputChange(p.id, 'march4Power', Number(e.target.value))} style={inputStyle} />
                         : Number(p.march4Power).toLocaleString()}
                     </td>
@@ -434,6 +450,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                     <select 
                       value={p.gloryWarStatus || 'Offline'}
                       onChange={(e) => handleInputChange(p.id, 'gloryWarStatus', e.target.value)}
+                      disabled={!canEditRoster}
                       style={{
                         ...selectStyle,
                         color: p.gloryWarStatus === 'Attacker' ? 'var(--accent-purple)' : 
@@ -442,7 +459,9 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                         backgroundColor: 'var(--bg-dark)',
                         border: '1px solid transparent',
                         padding: '2px 4px',
-                        fontWeight: p.gloryWarStatus === 'Offline' ? 400 : 700
+                        fontWeight: p.gloryWarStatus === 'Offline' ? 400 : 700,
+                        cursor: canEditRoster ? 'pointer' : 'default',
+                        opacity: canEditRoster ? 1 : 0.75,
                       }}
                       onMouseEnter={(e) => e.currentTarget.style.border = '1px solid var(--border-subtle)'}
                       onMouseLeave={(e) => e.currentTarget.style.border = '1px solid transparent'}
@@ -453,32 +472,32 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                     </select>
                   </td>
                   <td style={tdStyle}>
-                    {isEditing ? 
+                    {isEditing && canEditRoster ? 
                       <input type="number" value={p.techPower} onChange={(e) => handleInputChange(p.id, 'techPower', Number(e.target.value))} style={inputStyle} /> 
                       : renderStatValue(p.techPower)}
                   </td>
                   <td style={tdStyle}>
-                    {isEditing ? 
+                    {isEditing && canEditRoster ? 
                       <input type="number" value={p.heroPower} onChange={(e) => handleInputChange(p.id, 'heroPower', Number(e.target.value))} style={inputStyle} /> 
                       : renderStatValue(p.heroPower)}
                   </td>
                   <td style={tdStyle}>
-                    {isEditing ? 
+                    {isEditing && canEditRoster ? 
                       <input type="number" value={p.troopPower} onChange={(e) => handleInputChange(p.id, 'troopPower', Number(e.target.value))} style={inputStyle} /> 
                       : renderStatValue(p.troopPower)}
                   </td>
                   <td style={tdStyle}>
-                    {isEditing ? 
+                    {isEditing && canEditRoster ? 
                       <input type="number" value={p.modVehiclePower} onChange={(e) => handleInputChange(p.id, 'modVehiclePower', Number(e.target.value))} style={inputStyle} /> 
                       : renderStatValue(p.modVehiclePower)}
                   </td>
                   <td style={tdStyle}>
-                    {isEditing ? 
+                    {isEditing && canEditRoster ? 
                       <input type="number" value={p.structurePower} onChange={(e) => handleInputChange(p.id, 'structurePower', Number(e.target.value))} style={inputStyle} /> 
                       : renderStatValue(p.structurePower)}
                   </td>
                   <td style={tdStyle}>
-                    {isEditing ? 
+                    {isEditing && canEditRoster ? 
                       <input type="number" value={p.kills} onChange={(e) => handleInputChange(p.id, 'kills', Number(e.target.value))} style={inputStyle} /> 
                       : renderStatValue(p.kills)}
                   </td>
@@ -492,16 +511,18 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
         </table>
       </div>
 
-      <div className="flex-row justify-end" style={{ marginTop: '1rem' }}>
-        <button 
-          className="cyber-button primary" 
-          onClick={onSave} 
-          disabled={isSaving}
-          style={{ minWidth: '200px' }}
-        >
-          {isSaving ? 'UPLOADING INTEL...' : 'SAVE ALL CHANGES'}
-        </button>
-      </div>
+      {canEditRoster && (
+        <div className="flex-row justify-end" style={{ marginTop: '1rem' }}>
+          <button 
+            className="cyber-button primary" 
+            onClick={onSave} 
+            disabled={isSaving}
+            style={{ minWidth: '200px' }}
+          >
+            {isSaving ? 'UPLOADING INTEL...' : 'SAVE ALL CHANGES'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

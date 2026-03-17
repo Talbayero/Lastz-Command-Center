@@ -11,20 +11,21 @@ datasource db {
 }
 
 model Player {
-  id          String     @id @default(cuid())
-  name        String     @unique
-  alliance    String?    @default("Last Z Base")
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id              String     @id @default(cuid())
+  name            String     @unique
+  alliance        String?    @default("BOM")
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
   gloryWarStatus String  @default("Offline")
-  kills       Int        @default(0)
-  totalPower  Int        @default(0)
-  march1Power Int        @default(0)
-  march2Power Int        @default(0)
-  march3Power Int        @default(0)
-  march4Power Int        @default(0)
-  latestScore Float      @default(0)
-  snapshots   Snapshot[]
+  kills           Int        @default(0)
+  totalPower      Int        @default(0)
+  march1Power     Int        @default(0)
+  march2Power     Int        @default(0)
+  march3Power     Int        @default(0)
+  march4Power     Int        @default(0)
+  latestScore     Float      @default(0)
+  snapshots       Snapshot[]
+  account         User?
 }
 
 model Snapshot {
@@ -49,4 +50,39 @@ model Bug {
   priority    String   @default("Medium")
   status      String   @default("Open")
   createdAt   DateTime @default(now())
+}
+
+model User {
+  id             String        @id @default(cuid())
+  playerId       String        @unique
+  player         Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  roleId         String
+  role           Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  passwordHash   String
+  isActive       Boolean       @default(true)
+  disabledByUser Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  sessions       UserSession[]
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  permissions Json
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+}
+
+model UserSession {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
 }

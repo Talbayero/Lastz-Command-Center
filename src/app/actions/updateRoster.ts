@@ -2,9 +2,11 @@
 
 import prisma from "@/utils/db";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "@/utils/auth";
 
 export async function updateRoster(players: any[]) {
   try {
+    await requirePermission("editRoster");
     const SCORE_WEIGHTS = { kills: 0.30, tech: 0.25, hero: 0.20, troop: 0.15, structure: 0.05, modVehicle: 0.05 };
     const preparedPlayers = players.map((p) => {
       const name = String(p.name ?? "").trim();
@@ -71,6 +73,18 @@ export async function updateRoster(players: any[]) {
       throw new Error(`Player name "${existingConflicts[0].name}" is already in use.`);
     }
 
+    const currentPlayers = await prisma.player.findMany({
+      where: { id: { in: preparedPlayers.map((player) => player.id) } },
+      select: { id: true, name: true },
+    });
+
+    const currentNameMap = new Map(currentPlayers.map((player) => [player.id, player.name]));
+    const hasNameChanges = preparedPlayers.some((player) => currentNameMap.get(player.id) !== player.name);
+
+    if (hasNameChanges) {
+      await requirePermission("editPlayerNames");
+    }
+
     const operations = preparedPlayers.flatMap((player) => [
       prisma.player.update({
         where: { id: player.id },
@@ -113,6 +127,8 @@ export async function updateRoster(players: any[]) {
 
 export async function deleteRosterPlayer(playerId: string) {
   try {
+    await requirePermission("deleteRosterMembers");
+
     await prisma.$transaction([
       prisma.snapshot.deleteMany({
         where: { playerId },
