@@ -66,6 +66,14 @@ function renderStatValue(value: number) {
   );
 }
 
+function getAverage(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
 export default function Roster({
   initialPlayers,
   canEditRoster = true,
@@ -195,6 +203,14 @@ export default function Roster({
     return sortDirection === "asc" ? " ▲" : " ▼";
   };
 
+  const attackers = players.filter((player) => player.gloryWarStatus === "Attacker");
+  const defenders = players.filter((player) => player.gloryWarStatus === "Defender");
+  const offline = players.filter((player) => player.gloryWarStatus === "Offline");
+  const attackerAverageCombat = getAverage(attackers.map((player) => player.combatPower));
+  const attackerAverageTroop = getAverage(attackers.map((player) => player.troopPower));
+  const defenderAverageCombat = getAverage(defenders.map((player) => player.combatPower));
+  const defenderAverageTroop = getAverage(defenders.map((player) => player.troopPower));
+
   return (
     <div className="flex-col gap-4">
       {message && (
@@ -230,15 +246,33 @@ export default function Roster({
           <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
             <div className="flex-col">
               <span style={miniLabelStyle}>ATTACKERS</span>
-              <span style={{ color: 'var(--accent-purple)', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{players.filter(p => p.gloryWarStatus === 'Attacker').length}</span>
+              <span style={{ color: 'var(--accent-purple)', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{attackers.length}</span>
             </div>
             <div className="flex-col">
               <span style={miniLabelStyle}>DEFENDERS</span>
-              <span style={{ color: 'var(--accent-neon)', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{players.filter(p => p.gloryWarStatus === 'Defender').length}</span>
+              <span style={{ color: 'var(--accent-neon)', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{defenders.length}</span>
             </div>
             <div className="flex-col">
               <span style={miniLabelStyle}>TOTAL OFFLINE</span>
-              <span style={{ color: '#fff', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{players.filter(p => p.gloryWarStatus === 'Offline').length}</span>
+              <span style={{ color: '#fff', fontWeight: 800, fontSize: '1.6rem', lineHeight: 1 }}>{offline.length}</span>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem", marginTop: "1rem" }}>
+            <div style={avgItemStyle}>
+              <span style={miniLabelStyle}>ATTACKER AVG COMBAT</span>
+              <span style={avgValueStyle}>{attackerAverageCombat.toLocaleString()}</span>
+            </div>
+            <div style={avgItemStyle}>
+              <span style={miniLabelStyle}>ATTACKER AVG TROOP</span>
+              <span style={avgValueStyle}>{attackerAverageTroop.toLocaleString()}</span>
+            </div>
+            <div style={avgItemStyle}>
+              <span style={miniLabelStyle}>DEFENDER AVG COMBAT</span>
+              <span style={avgValueStyle}>{defenderAverageCombat.toLocaleString()}</span>
+            </div>
+            <div style={avgItemStyle}>
+              <span style={miniLabelStyle}>DEFENDER AVG TROOP</span>
+              <span style={avgValueStyle}>{defenderAverageTroop.toLocaleString()}</span>
             </div>
           </div>
         </div>

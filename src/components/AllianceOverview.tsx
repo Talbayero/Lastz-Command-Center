@@ -2,6 +2,7 @@ type PlayerData = {
   id: string;
   name: string;
   totalPower: number;
+  combatPower: number;
   techPower: number;
   heroPower: number;
   troopPower: number;
@@ -31,6 +32,14 @@ function needsCorrection(player: PlayerData) {
   return correctionFields.some((field) => player[field] === 0);
 }
 
+function averageOf(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
 export default function AllianceOverview({
   players,
   bugs,
@@ -42,9 +51,16 @@ export default function AllianceOverview({
   const totalPower = players.reduce((sum, player) => sum + player.totalPower, 0);
   const totalKills = players.reduce((sum, player) => sum + player.kills, 0);
   const averageScore = players.reduce((sum, player) => sum + player.latestScore, 0) / (totalMembers || 1);
-  const attackers = players.filter((player) => player.gloryWarStatus === "Attacker").length;
-  const defenders = players.filter((player) => player.gloryWarStatus === "Defender").length;
-  const offline = players.filter((player) => player.gloryWarStatus === "Offline").length;
+  const attackerPlayers = players.filter((player) => player.gloryWarStatus === "Attacker");
+  const defenderPlayers = players.filter((player) => player.gloryWarStatus === "Defender");
+  const offlinePlayers = players.filter((player) => player.gloryWarStatus === "Offline");
+  const attackers = attackerPlayers.length;
+  const defenders = defenderPlayers.length;
+  const offline = offlinePlayers.length;
+  const attackerAverageCombat = averageOf(attackerPlayers.map((player) => player.combatPower));
+  const attackerAverageTroop = averageOf(attackerPlayers.map((player) => player.troopPower));
+  const defenderAverageCombat = averageOf(defenderPlayers.map((player) => player.combatPower));
+  const defenderAverageTroop = averageOf(defenderPlayers.map((player) => player.troopPower));
   const flaggedProfiles = players.filter(needsCorrection).length;
   const cleanProfiles = totalMembers - flaggedProfiles;
   const openBugs = bugs.filter((bug) => bug.status === "Open").length;
@@ -94,6 +110,12 @@ export default function AllianceOverview({
             <MetricBlock label="Attackers" value={attackers} color="var(--accent-purple)" />
             <MetricBlock label="Defenders" value={defenders} color="var(--accent-neon)" />
             <MetricBlock label="Offline" value={offline} color="#fff" />
+          </div>
+          <div style={readinessAverageGridStyle}>
+            <ReadinessAverage label="Attacker Avg Combat" value={attackerAverageCombat} />
+            <ReadinessAverage label="Attacker Avg Troop" value={attackerAverageTroop} />
+            <ReadinessAverage label="Defender Avg Combat" value={defenderAverageCombat} />
+            <ReadinessAverage label="Defender Avg Troop" value={defenderAverageTroop} />
           </div>
           <p style={bodyCopyStyle}>
             Current roster posture shows {attackers} attackers, {defenders} defenders, and {offline} offline members.
@@ -205,6 +227,30 @@ function MetricBlock({
   );
 }
 
+function ReadinessAverage({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div
+      style={{
+        backgroundColor: "var(--bg-input)",
+        border: "1px solid var(--border-subtle)",
+        borderRadius: "6px",
+        padding: "0.75rem 0.85rem",
+      }}
+    >
+      <div style={miniLabelStyle}>{label}</div>
+      <div style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)", fontWeight: 700, marginTop: "0.35rem" }}>
+        {value.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
 function RankingPanel({
   title,
   players,
@@ -266,4 +312,10 @@ const metricGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: "1rem",
+};
+
+const readinessAverageGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "0.75rem",
 };
