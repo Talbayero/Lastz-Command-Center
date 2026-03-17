@@ -18,6 +18,19 @@ type BugData = {
   priority: string;
 };
 
+const correctionFields = [
+  "techPower",
+  "heroPower",
+  "troopPower",
+  "modVehiclePower",
+  "structurePower",
+  "kills",
+] as const;
+
+function needsCorrection(player: PlayerData) {
+  return correctionFields.some((field) => player[field] === 0);
+}
+
 export default function AllianceOverview({
   players,
   bugs,
@@ -26,14 +39,14 @@ export default function AllianceOverview({
   bugs: BugData[];
 }) {
   const totalMembers = players.length;
-  const namedPlayers = players.filter((player) => !player.name.toLowerCase().startsWith("unknown"));
-  const unknownPlayers = totalMembers - namedPlayers.length;
   const totalPower = players.reduce((sum, player) => sum + player.totalPower, 0);
   const totalKills = players.reduce((sum, player) => sum + player.kills, 0);
   const averageScore = players.reduce((sum, player) => sum + player.latestScore, 0) / (totalMembers || 1);
   const attackers = players.filter((player) => player.gloryWarStatus === "Attacker").length;
   const defenders = players.filter((player) => player.gloryWarStatus === "Defender").length;
   const offline = players.filter((player) => player.gloryWarStatus === "Offline").length;
+  const flaggedProfiles = players.filter(needsCorrection).length;
+  const cleanProfiles = totalMembers - flaggedProfiles;
   const openBugs = bugs.filter((bug) => bug.status === "Open").length;
   const highPriorityBugs = bugs.filter((bug) => bug.priority === "High" && bug.status === "Open").length;
 
@@ -90,11 +103,11 @@ export default function AllianceOverview({
         <section className="cyber-card flex-col gap-4">
           <h3 style={sectionTitleStyle}>Data Quality</h3>
           <div style={metricGridStyle}>
-            <MetricBlock label="Named Profiles" value={namedPlayers.length} color="var(--accent-neon)" />
-            <MetricBlock label="Unknown Names" value={unknownPlayers} color="var(--accent-red)" />
+            <MetricBlock label="Clean Profiles" value={cleanProfiles} color="var(--accent-neon)" />
+            <MetricBlock label="Needs Correction" value={flaggedProfiles} color="var(--accent-red)" />
           </div>
           <p style={bodyCopyStyle}>
-            OCR captured {namedPlayers.length} clearly identified members. {unknownPlayers} profiles still need manual name cleanup.
+            {flaggedProfiles} profiles have at least one missing combat stat showing as 0 and should be reviewed manually.
           </p>
         </section>
 

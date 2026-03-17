@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { deleteRosterPlayer, updateRoster } from "@/app/actions/updateRoster";
-import { Pencil, Check, Trash2 } from "lucide-react";
+import { Pencil, Check, Trash2, AlertTriangle } from "lucide-react";
 
 type PlayerData = {
   id: string;
@@ -31,6 +31,32 @@ type SortField =
   | "latestScore";
 
 type SortDirection = "asc" | "desc";
+
+const correctionFields = [
+  "techPower",
+  "heroPower",
+  "troopPower",
+  "modVehiclePower",
+  "structurePower",
+  "kills",
+] as const;
+
+function getCorrectionFields(player: PlayerData) {
+  return correctionFields.filter((field) => player[field] === 0);
+}
+
+function renderStatValue(value: number) {
+  if (value !== 0) {
+    return Number(value).toLocaleString();
+  }
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", color: "var(--accent-red)", fontWeight: 700 }}>
+      <AlertTriangle size={14} />
+      VERIFY
+    </span>
+  );
+}
 
 export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[] }) {
   const [players, setPlayers] = useState<PlayerData[]>(initialPlayers);
@@ -231,6 +257,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
           <thead style={{ backgroundColor: 'var(--bg-dark)', borderBottom: '1px solid var(--border-subtle)' }}>
             <tr>
               <th style={thStyle}>ACTIONS</th>
+              <th style={thStyle}>VERIFY</th>
               <th style={sortableThStyle(sortField === "rank")} onClick={() => onSort("rank")}>RANK{getSortIndicator("rank")}</th>
               <th style={sortableThStyle(sortField === "name")} onClick={() => onSort("name")}>NAME{getSortIndicator("name")}</th>
               <th style={{ ...sortableThStyle(sortField === "gloryWarStatus"), backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }} onClick={() => onSort("gloryWarStatus")}>GLORY WAR{getSortIndicator("gloryWarStatus")}</th>
@@ -246,8 +273,20 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
           <tbody>
             {sortedPlayers.map((p, idx) => {
               const isEditing = editingRowId === p.id;
+              const missingFields = getCorrectionFields(p);
+              const needsReview = missingFields.length > 0;
               return (
-                <tr key={p.id} style={{ borderBottom: '1px solid var(--border-subtle)', backgroundColor: isEditing ? 'rgba(176, 38, 255, 0.05)' : 'transparent' }}>
+                <tr
+                  key={p.id}
+                  style={{
+                    borderBottom: '1px solid var(--border-subtle)',
+                    backgroundColor: isEditing
+                      ? 'rgba(176, 38, 255, 0.05)'
+                      : needsReview
+                        ? 'rgba(255, 51, 102, 0.05)'
+                        : 'transparent'
+                  }}
+                >
                   <td style={tdStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <button 
@@ -284,6 +323,23 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                     </div>
                   </td>
                   <td style={tdStyle}>
+                    {needsReview ? (
+                      <span
+                        title={`Verify ${p.name}: missing ${missingFields.join(", ")}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--accent-red)',
+                        }}
+                      >
+                        <AlertTriangle size={16} />
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>-</span>
+                    )}
+                  </td>
+                  <td style={tdStyle}>
                     <span style={{ color: 'var(--accent-neon)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
                       #{scoreRankings[p.id]}
                     </span>
@@ -316,32 +372,32 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                   <td style={tdStyle}>
                     {isEditing ? 
                       <input type="number" value={p.techPower} onChange={(e) => handleInputChange(p.id, 'techPower', Number(e.target.value))} style={inputStyle} /> 
-                      : Number(p.techPower).toLocaleString()}
+                      : renderStatValue(p.techPower)}
                   </td>
                   <td style={tdStyle}>
                     {isEditing ? 
                       <input type="number" value={p.heroPower} onChange={(e) => handleInputChange(p.id, 'heroPower', Number(e.target.value))} style={inputStyle} /> 
-                      : Number(p.heroPower).toLocaleString()}
+                      : renderStatValue(p.heroPower)}
                   </td>
                   <td style={tdStyle}>
                     {isEditing ? 
                       <input type="number" value={p.troopPower} onChange={(e) => handleInputChange(p.id, 'troopPower', Number(e.target.value))} style={inputStyle} /> 
-                      : Number(p.troopPower).toLocaleString()}
+                      : renderStatValue(p.troopPower)}
                   </td>
                   <td style={tdStyle}>
                     {isEditing ? 
                       <input type="number" value={p.modVehiclePower} onChange={(e) => handleInputChange(p.id, 'modVehiclePower', Number(e.target.value))} style={inputStyle} /> 
-                      : Number(p.modVehiclePower).toLocaleString()}
+                      : renderStatValue(p.modVehiclePower)}
                   </td>
                   <td style={tdStyle}>
                     {isEditing ? 
                       <input type="number" value={p.structurePower} onChange={(e) => handleInputChange(p.id, 'structurePower', Number(e.target.value))} style={inputStyle} /> 
-                      : Number(p.structurePower).toLocaleString()}
+                      : renderStatValue(p.structurePower)}
                   </td>
                   <td style={tdStyle}>
                     {isEditing ? 
                       <input type="number" value={p.kills} onChange={(e) => handleInputChange(p.id, 'kills', Number(e.target.value))} style={inputStyle} /> 
-                      : Number(p.kills).toLocaleString()}
+                      : renderStatValue(p.kills)}
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'right', color: 'var(--accent-neon)', fontWeight: 'bold' }}>
                     {Math.round(p.latestScore).toLocaleString()}
