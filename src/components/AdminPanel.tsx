@@ -55,11 +55,17 @@ export default function AdminPanel({
 
   const filteredRoster = useMemo(() => {
     const query = userSearch.trim().toLowerCase();
-    if (!query) {
-      return roster;
-    }
+    const matchingRoster = query
+      ? roster.filter((entry) => entry.playerName.toLowerCase().includes(query))
+      : roster;
 
-    return roster.filter((entry) => entry.playerName.toLowerCase().includes(query));
+    return [...matchingRoster].sort((a, b) => {
+      if (a.isOnline !== b.isOnline) {
+        return a.isOnline ? -1 : 1;
+      }
+
+      return a.playerName.localeCompare(b.playerName);
+    });
   }, [roster, userSearch]);
 
   useEffect(() => {
