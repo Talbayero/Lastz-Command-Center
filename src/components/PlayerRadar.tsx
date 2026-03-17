@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip, Legend } from "recharts";
 import { useRouter } from "next/navigation";
 
@@ -11,16 +12,26 @@ type RadarProps = {
 
 export default function PlayerRadar({ playerData, allPlayerNames, allianceAverage }: RadarProps) {
   const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState(playerData?.name ?? "");
   if (!playerData) return null;
 
-  const handlePlayerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const name = e.target.value;
+  useEffect(() => {
+    setSearchTerm(playerData?.name ?? "");
+  }, [playerData?.name]);
+
+  const handlePlayerChange = (name: string) => {
     if (name) {
       router.push(`/?name=${encodeURIComponent(name)}`);
     } else {
       router.push('/');
     }
   };
+
+  const filteredNames = searchTerm.trim().length === 0
+    ? allPlayerNames.slice(0, 8)
+    : allPlayerNames
+        .filter((name) => name.toLowerCase().includes(searchTerm.toLowerCase()))
+        .slice(0, 8);
 
   // Transform data into Recharts format
   const data = [
@@ -61,25 +72,38 @@ export default function PlayerRadar({ playerData, allPlayerNames, allianceAverag
       <div className="flex-row justify-between items-end" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
         <div className="flex-col">
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Target Selection</span>
-          <select 
-            value={playerData.name} 
-            onChange={handlePlayerChange}
-            style={{
-              backgroundColor: 'transparent',
-              border: 'none',
-              color: 'var(--accent-purple)',
-              fontSize: '1.25rem',
-              fontWeight: 'bold',
-              outline: 'none',
-              cursor: 'pointer',
-              padding: '0',
-              fontFamily: 'inherit'
-            }}
-          >
-            {allPlayerNames.map(name => (
-              <option key={name} value={name} style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}>{name}</option>
-            ))}
-          </select>
+          <div className="flex-col gap-2" style={{ minWidth: '280px', marginTop: '0.4rem' }}>
+            <input
+              type="text"
+              className="cyber-input"
+              placeholder="Search player name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const exactMatch = allPlayerNames.find((name) => name.toLowerCase() === searchTerm.trim().toLowerCase());
+                  handlePlayerChange(exactMatch || filteredNames[0] || "");
+                }
+              }}
+              style={{
+                color: 'var(--accent-purple)',
+                fontWeight: 'bold',
+                fontSize: '1rem',
+              }}
+            />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {filteredNames.map((name) => (
+                <button
+                  key={name}
+                  className="cyber-button"
+                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.7rem' }}
+                  onClick={() => handlePlayerChange(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase' }}>Total Power</span>
