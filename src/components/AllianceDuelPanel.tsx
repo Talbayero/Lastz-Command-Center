@@ -77,6 +77,8 @@ export default function AllianceDuelPanel({
   const [unmatchedEntries, setUnmatchedEntries] = useState<UnmatchedDuelEntry[]>([]);
   const [matchDrafts, setMatchDrafts] = useState<MatchDraftState>({});
   const [uploadReviewEntries, setUploadReviewEntries] = useState<UploadReviewEntry[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const activeRequirement = requirementDraft[activeDayKey];
   const activePlayers = useMemo(() => {
@@ -324,7 +326,8 @@ export default function AllianceDuelPanel({
       return;
     }
 
-    startTransition(async () => {
+    setIsUploading(true);
+    try {
       let nextPlayers = players;
       let totalAppliedCount = 0;
       const unmatchedNames = new Set<string>();
@@ -333,12 +336,16 @@ export default function AllianceDuelPanel({
 
       for (const file of fileList) {
         const imageBase64 = await fileToBase64(file);
-        const result = await processAllianceDuelScreenshot({
-          imageBase64,
-          mimeType: file.type || "image/png",
-          scoreType: activeScoreType,
-          dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
-        });
+        const result = await withTimeout(
+          processAllianceDuelScreenshot({
+            imageBase64,
+            mimeType: file.type || "image/png",
+            scoreType: activeScoreType,
+            dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
+          }),
+          45000,
+          `Upload timed out on ${file.name}. Try a smaller screenshot or refresh and try again.`
+        );
 
         if (!result.success) {
           setMessage({
@@ -391,7 +398,22 @@ export default function AllianceDuelPanel({
             ? `Updated ${totalAppliedCount} players from ${fileList.length} screenshot${fileList.length === 1 ? "" : "s"}. Unmatched: ${Array.from(unmatchedNames).join(", ")}`
             : `Updated ${totalAppliedCount} players from ${fileList.length} screenshot${fileList.length === 1 ? "" : "s"}.`,
       });
-    });
+    } catch (error: any) {
+      setMessage({ type: "error", text: error?.message || "Upload failed." });
+    } finally {
+      setIsUploading(false);
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    if (isUploading) return;
+    const files = event.dataTransfer.files;
+    if (files && files.length > 0) {
+      void uploadScreenshots(files);
+    }
   };
 
   return (
@@ -521,8 +543,25 @@ export default function AllianceDuelPanel({
             <p style={summaryHintStyle}>
               Upload ranking screenshots for the current view. Only visible players are updated; missing players stay unchanged.
             </p>
-            <label style={uploadDropzoneStyle}>
-              {isPending ? (
+            <label
+              style={{
+                ...uploadDropzoneStyle,
+                borderColor: isDragging ? "var(--accent-neon)" : "var(--border-subtle)",
+                backgroundColor: isDragging ? "rgba(0,255,157,0.06)" : "transparent",
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (!isUploading) {
+                  setIsDragging(true);
+                }
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+              }}
+              onDrop={handleDrop}
+            >
+              {isUploading ? (
                 <div className="flex-col gap-3" style={{ alignItems: "center" }}>
                   <Loader2 className="animate-spin" size={26} style={{ color: "var(--accent-neon)" }} />
                   <span style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)" }}>Processing screenshot...</span>
@@ -538,7 +577,7 @@ export default function AllianceDuelPanel({
                 accept="image/*"
                 multiple
                 style={{ display: "none" }}
-                disabled={isPending}
+                disabled={isUploading}
                 onChange={(e) => {
                   const files = e.target.files;
                   if (files && files.length > 0) {
@@ -936,3 +975,15 @@ const messageStyle = (type: "success" | "error"): React.CSSProperties => ({
   fontFamily: "var(--font-mono)",
   fontSize: "0.85rem",
 });
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  return Promise.race<T>([
+    promise,
+    new Promise<T>((_, reject) => {
+      const timer = setTimeout(() => {
+        clearTimeout(timer);
+        reject(new Error(message));
+      }, timeoutMs);
+    }),
+  ]);
+}
