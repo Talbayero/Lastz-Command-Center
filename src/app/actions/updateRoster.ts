@@ -15,6 +15,10 @@ export async function updateRoster(players: any[]) {
         const troop = Number(p.troopPower) || 0;
         const structure = Number(p.structurePower) || 0;
         const modVehicle = Number(p.modVehiclePower) || 0;
+        const march1Power = Number(p.march1Power) || 0;
+        const march2Power = Number(p.march2Power) || 0;
+        const march3Power = Number(p.march3Power) || 0;
+        const march4Power = Number(p.march4Power) || 0;
 
         const rawScore =
           (kills      * SCORE_WEIGHTS.kills) +
@@ -31,6 +35,10 @@ export async function updateRoster(players: any[]) {
           data: {
             totalPower,
             kills,
+            march1Power,
+            march2Power,
+            march3Power,
+            march4Power,
             latestScore: rawScore,
             gloryWarStatus: p.gloryWarStatus || "Offline",
           },

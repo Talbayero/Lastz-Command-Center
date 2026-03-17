@@ -19,9 +19,14 @@ type PlayerLike = {
   kills: number;
   latestScore: number;
   gloryWarStatus: string;
+  march1Power: number;
+  march2Power: number;
+  march3Power: number;
+  march4Power: number;
 };
 
 function flattenPlayerSnapshot(player: PlayerLike, snapshot?: SnapshotLike | null) {
+  const combatPower = player.march1Power + player.march2Power + player.march3Power + player.march4Power;
   return {
     id: player.id,
     name: player.name,
@@ -29,6 +34,11 @@ function flattenPlayerSnapshot(player: PlayerLike, snapshot?: SnapshotLike | nul
     kills: player.kills,
     latestScore: player.latestScore,
     gloryWarStatus: player.gloryWarStatus,
+    march1Power: player.march1Power,
+    march2Power: player.march2Power,
+    march3Power: player.march3Power,
+    march4Power: player.march4Power,
+    combatPower,
     createdAt: snapshot?.createdAt ?? null,
     structurePower: snapshot?.structurePower ?? 0,
     techPower: snapshot?.techPower ?? 0,

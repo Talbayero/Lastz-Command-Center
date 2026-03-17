@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteRosterPlayer, updateRoster } from "@/app/actions/updateRoster";
-import { Pencil, Check, Trash2, AlertTriangle } from "lucide-react";
+import { Pencil, Check, Trash2, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 
 type PlayerData = {
   id: string;
@@ -17,12 +17,18 @@ type PlayerData = {
   kills: number;
   gloryWarStatus: string;
   latestScore: number;
+  march1Power: number;
+  march2Power: number;
+  march3Power: number;
+  march4Power: number;
+  combatPower: number;
 };
 
 type SortField =
   | "verify"
   | "rank"
   | "name"
+  | "combatPower"
   | "gloryWarStatus"
   | "techPower"
   | "heroPower"
@@ -69,9 +75,21 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField>("latestScore");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [showMarchColumns, setShowMarchColumns] = useState(false);
 
   const handleInputChange = (id: string, field: keyof PlayerData, value: string | number) => {
-    setPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+    setPlayers(prev => prev.map((p) => {
+      if (p.id !== id) return p;
+
+      const nextPlayer = { ...p, [field]: value } as PlayerData;
+      nextPlayer.combatPower =
+        Number(nextPlayer.march1Power || 0) +
+        Number(nextPlayer.march2Power || 0) +
+        Number(nextPlayer.march3Power || 0) +
+        Number(nextPlayer.march4Power || 0);
+
+      return nextPlayer;
+    }));
   };
 
   const onSave = async () => {
@@ -256,8 +274,19 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
-          SHOWING {sortedPlayers.length} OF {players.length}
+        <div className="flex-row gap-4 items-center">
+          <button
+            type="button"
+            className="cyber-button"
+            onClick={() => setShowMarchColumns((prev) => !prev)}
+            style={{ padding: '0.45rem 0.8rem', fontSize: '0.72rem' }}
+          >
+            {showMarchColumns ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            {showMarchColumns ? 'Hide Marches' : 'Show Marches'}
+          </button>
+          <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
+            SHOWING {sortedPlayers.length} OF {players.length}
+          </div>
         </div>
       </div>
 
@@ -269,6 +298,11 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
               <th style={sortableThStyle(sortField === "verify")} onClick={() => onSort("verify")}>VERIFY{getSortIndicator("verify")}</th>
               <th style={sortableThStyle(sortField === "rank")} onClick={() => onSort("rank")}>RANK{getSortIndicator("rank")}</th>
               <th style={sortableThStyle(sortField === "name")} onClick={() => onSort("name")}>NAME{getSortIndicator("name")}</th>
+              <th style={sortableThStyle(sortField === "combatPower")} onClick={() => onSort("combatPower")}>COMBAT POWER{getSortIndicator("combatPower")}</th>
+              {showMarchColumns && <th style={thStyle}>MARCH 1</th>}
+              {showMarchColumns && <th style={thStyle}>MARCH 2</th>}
+              {showMarchColumns && <th style={thStyle}>MARCH 3</th>}
+              {showMarchColumns && <th style={thStyle}>MARCH 4</th>}
               <th style={{ ...sortableThStyle(sortField === "gloryWarStatus"), backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }} onClick={() => onSort("gloryWarStatus")}>GLORY WAR{getSortIndicator("gloryWarStatus")}</th>
               <th style={sortableThStyle(sortField === "techPower")} onClick={() => onSort("techPower")}>TECH POWER{getSortIndicator("techPower")}</th>
               <th style={sortableThStyle(sortField === "heroPower")} onClick={() => onSort("heroPower")}>HERO POWER{getSortIndicator("heroPower")}</th>
@@ -356,6 +390,37 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
                   <td style={{ ...tdStyle, fontWeight: 600 }}>
                     {p.name}
                   </td>
+                  <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', color: 'var(--accent-neon)', fontWeight: 700 }}>
+                    {Number(p.combatPower).toLocaleString()}
+                  </td>
+                  {showMarchColumns && (
+                    <td style={tdStyle}>
+                      {isEditing
+                        ? <input type="number" value={p.march1Power} onChange={(e) => handleInputChange(p.id, 'march1Power', Number(e.target.value))} style={inputStyle} />
+                        : Number(p.march1Power).toLocaleString()}
+                    </td>
+                  )}
+                  {showMarchColumns && (
+                    <td style={tdStyle}>
+                      {isEditing
+                        ? <input type="number" value={p.march2Power} onChange={(e) => handleInputChange(p.id, 'march2Power', Number(e.target.value))} style={inputStyle} />
+                        : Number(p.march2Power).toLocaleString()}
+                    </td>
+                  )}
+                  {showMarchColumns && (
+                    <td style={tdStyle}>
+                      {isEditing
+                        ? <input type="number" value={p.march3Power} onChange={(e) => handleInputChange(p.id, 'march3Power', Number(e.target.value))} style={inputStyle} />
+                        : Number(p.march3Power).toLocaleString()}
+                    </td>
+                  )}
+                  {showMarchColumns && (
+                    <td style={tdStyle}>
+                      {isEditing
+                        ? <input type="number" value={p.march4Power} onChange={(e) => handleInputChange(p.id, 'march4Power', Number(e.target.value))} style={inputStyle} />
+                        : Number(p.march4Power).toLocaleString()}
+                    </td>
+                  )}
                   <td style={{ ...tdStyle, backgroundColor: 'rgba(176, 38, 255, 0.1)', borderLeft: '1px solid rgba(176, 38, 255, 0.3)', borderRight: '1px solid rgba(176, 38, 255, 0.3)' }}>
                     <select 
                       value={p.gloryWarStatus || 'Offline'}

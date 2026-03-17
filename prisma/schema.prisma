@@ -19,6 +19,10 @@ model Player {
   gloryWarStatus String  @default("Offline")
   kills       Int        @default(0)
   totalPower  Int        @default(0)
+  march1Power Int        @default(0)
+  march2Power Int        @default(0)
+  march3Power Int        @default(0)
+  march4Power Int        @default(0)
   latestScore Float      @default(0)
   snapshots   Snapshot[]
 }
