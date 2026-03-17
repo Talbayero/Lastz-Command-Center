@@ -35,6 +35,12 @@ type DuelRequirement = {
 };
 
 type ManualDraftState = Record<string, { score: number; rank: string }>;
+type UnmatchedDuelEntry = {
+  name: string;
+  score: number;
+  rank: number | null;
+};
+type MatchDraftState = Record<string, string>;
 
 const scoreTypeLabels: Record<AllianceDuelScoreType, string> = {
   daily: "Daily Rank",
@@ -61,6 +67,8 @@ export default function AllianceDuelPanel({
   const [requirementDraft, setRequirementDraft] = useState<Record<AllianceDuelDayKey, DuelRequirement>>(() =>
     requirementsToMap(initialRequirements)
   );
+  const [unmatchedEntries, setUnmatchedEntries] = useState<UnmatchedDuelEntry[]>([]);
+  const [matchDrafts, setMatchDrafts] = useState<MatchDraftState>({});
 
   const activeRequirement = requirementDraft[activeDayKey];
   const activePlayers = useMemo(() => {
@@ -188,6 +196,47 @@ export default function AllianceDuelPanel({
     });
   };
 
+  const applyMatchedScreenshotEntry = (entry: UnmatchedDuelEntry) => {
+    const playerId = matchDrafts[getUnmatchedEntryKey(entry)];
+    if (!playerId) {
+      setMessage({ type: "error", text: `Choose a player for ${entry.name} first.` });
+      return;
+    }
+
+    setMessage(null);
+    startTransition(async () => {
+      const result = await saveAllianceDuelManualScore({
+        playerId,
+        scoreType: activeScoreType,
+        dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
+        score: entry.score,
+        rank: entry.rank,
+      });
+
+      if (!result.success) {
+        setMessage({ type: "error", text: result.error || "Failed to apply matched duel score." });
+        return;
+      }
+
+      const nextPlayers = applyUpdatedPlayers(players, [
+        {
+          playerId,
+          score: entry.score,
+          rank: entry.rank,
+        },
+      ]);
+      setPlayers(nextPlayers);
+      setManualDrafts(buildManualDrafts(nextPlayers, activeScoreType, activeDayKey));
+      setUnmatchedEntries((prev) => prev.filter((candidate) => getUnmatchedEntryKey(candidate) !== getUnmatchedEntryKey(entry)));
+      setMatchDrafts((prev) => {
+        const next = { ...prev };
+        delete next[getUnmatchedEntryKey(entry)];
+        return next;
+      });
+      setMessage({ type: "success", text: `Matched ${entry.name} to the selected player.` });
+    });
+  };
+
   const applyUpdatedPlayers = (
     currentPlayers: DuelPlayer[],
     updatedPlayers: Array<{ playerId: string; score: number; rank: number | null }>
@@ -230,6 +279,7 @@ export default function AllianceDuelPanel({
       let nextPlayers = players;
       let totalAppliedCount = 0;
       const unmatchedNames = new Set<string>();
+      const nextUnmatchedEntries: UnmatchedDuelEntry[] = [];
 
       for (const file of fileList) {
         const imageBase64 = await fileToBase64(file);
@@ -255,12 +305,22 @@ export default function AllianceDuelPanel({
         for (const name of result.unmatchedNames ?? []) {
           unmatchedNames.add(name);
         }
+        for (const entry of result.unmatchedEntries ?? []) {
+          nextUnmatchedEntries.push(entry);
+        }
 
         nextPlayers = applyUpdatedPlayers(nextPlayers, result.updatedPlayers ?? []);
       }
 
       setPlayers(nextPlayers);
       setManualDrafts(buildManualDrafts(nextPlayers, activeScoreType, activeDayKey));
+      setUnmatchedEntries(nextUnmatchedEntries);
+      setMatchDrafts(
+        nextUnmatchedEntries.reduce<MatchDraftState>((acc, entry) => {
+          acc[getUnmatchedEntryKey(entry)] = "";
+          return acc;
+        }, {})
+      );
       setMessage({
         type: "success",
         text:
@@ -432,6 +492,52 @@ export default function AllianceDuelPanel({
         )}
       </div>
 
+      {canManage && unmatchedEntries.length > 0 && (
+        <section className="cyber-card flex-col gap-4">
+          <h3 style={{ color: "var(--accent-purple)" }}>Match Uploaded Players</h3>
+          <p style={summaryHintStyle}>
+            These screenshot rows could not be matched automatically. Pick the correct BOM player and apply the uploaded score.
+          </p>
+          <div className="flex-col gap-3">
+            {unmatchedEntries.map((entry) => (
+              <div key={getUnmatchedEntryKey(entry)} style={requirementRowStyle}>
+                <div style={{ minWidth: "170px" }}>
+                  <div style={summaryLabelStyle}>Uploaded Name</div>
+                  <div style={{ color: "var(--text-main)", fontWeight: 700 }}>{entry.name}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    Score {entry.score.toLocaleString()} {entry.rank ? `| Rank #${entry.rank}` : ""}
+                  </div>
+                </div>
+                <select
+                  className="cyber-input"
+                  value={matchDrafts[getUnmatchedEntryKey(entry)] ?? ""}
+                  onChange={(e) =>
+                    setMatchDrafts((prev) => ({
+                      ...prev,
+                      [getUnmatchedEntryKey(entry)]: e.target.value,
+                    }))
+                  }
+                  style={{ minWidth: "220px", flex: 1 }}
+                >
+                  <option value="">Select BOM player...</option>
+                  {players
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.name}
+                      </option>
+                    ))}
+                </select>
+                <button className="cyber-button" onClick={() => applyMatchedScreenshotEntry(entry)} disabled={isPending}>
+                  APPLY
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="cyber-card flex-col gap-4">
         <h3 style={{ color: "var(--accent-neon)" }}>Alliance Duel Table</h3>
         <div style={tableWrapStyle}>
@@ -510,6 +616,10 @@ function requirementsToMap(requirements: DuelRequirement[]) {
     acc[requirement.dayKey] = requirement;
     return acc;
   }, {} as Record<AllianceDuelDayKey, DuelRequirement>);
+}
+
+function getUnmatchedEntryKey(entry: UnmatchedDuelEntry) {
+  return `${entry.name}::${entry.score}::${entry.rank ?? "na"}`;
 }
 
 async function fileToBase64(file: File) {

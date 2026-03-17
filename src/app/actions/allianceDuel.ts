@@ -91,7 +91,7 @@ async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: st
       .join(" ")
       .trim() ?? "";
 
-  const parsed = JSON.parse(rawText);
+  const parsed = parseGeminiJsonResponse(rawText);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
 
   return entries.map((entry: any) => ({
@@ -99,6 +99,45 @@ async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: st
     rank: normalizeRank(entry?.rank),
     score: normalizeScore(entry?.score),
   }));
+}
+
+function parseGeminiJsonResponse(rawText: string) {
+  const cleaned = rawText
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const candidates = [
+    cleaned,
+    extractJsonBlock(cleaned),
+    removeTrailingCommas(extractJsonBlock(cleaned)),
+    removeTrailingCommas(cleaned),
+  ].filter(Boolean) as string[];
+
+  let lastError: Error | null = null;
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch (error: any) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error("Could not parse Gemini JSON response.");
+}
+
+function extractJsonBlock(value: string) {
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    return value;
+  }
+  return value.slice(start, end + 1);
+}
+
+function removeTrailingCommas(value: string) {
+  return value.replace(/,\s*([}\]])/g, "$1");
 }
 
 export async function saveAllianceDuelRequirement(input: {
@@ -205,7 +244,7 @@ export async function processAllianceDuelScreenshot(input: {
     const playersByNormalizedName = new Map(players.map((player) => [normalizePlayerName(player.name), player]));
 
     const matchedEntries: Array<{ playerId: string; playerName: string; score: number; rank: number | null }> = [];
-    const unmatchedNames: string[] = [];
+    const unmatchedEntries: Array<{ name: string; score: number; rank: number | null }> = [];
 
     for (const entry of parsedEntries) {
       const normalizedName = normalizePlayerName(entry.name);
@@ -227,7 +266,11 @@ export async function processAllianceDuelScreenshot(input: {
       }
 
       if (!player) {
-        unmatchedNames.push(entry.name);
+        unmatchedEntries.push({
+          name: entry.name,
+          score: entry.score,
+          rank: entry.rank,
+        });
         continue;
       }
 
@@ -270,7 +313,8 @@ export async function processAllianceDuelScreenshot(input: {
     return {
       success: true,
       appliedCount: matchedEntries.length,
-      unmatchedNames,
+      unmatchedNames: unmatchedEntries.map((entry) => entry.name),
+      unmatchedEntries,
       updatedPlayers: matchedEntries,
     };
   } catch (error: any) {
