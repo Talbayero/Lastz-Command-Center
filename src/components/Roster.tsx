@@ -19,6 +19,7 @@ type PlayerData = {
 };
 
 type SortField =
+  | "verify"
   | "rank"
   | "name"
   | "gloryWarStatus"
@@ -140,6 +141,10 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
   const sortedPlayers = [...filteredPlayers].sort((a, b) => {
     const direction = sortDirection === "asc" ? 1 : -1;
 
+    if (sortField === "verify") {
+      return (getCorrectionFields(a).length - getCorrectionFields(b).length) * direction;
+    }
+
     if (sortField === "rank") {
       return (scoreRankings[a.id] - scoreRankings[b.id]) * direction;
     }
@@ -257,7 +262,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
           <thead style={{ backgroundColor: 'var(--bg-dark)', borderBottom: '1px solid var(--border-subtle)' }}>
             <tr>
               <th style={thStyle}>ACTIONS</th>
-              <th style={thStyle}>VERIFY</th>
+              <th style={sortableThStyle(sortField === "verify")} onClick={() => onSort("verify")}>VERIFY{getSortIndicator("verify")}</th>
               <th style={sortableThStyle(sortField === "rank")} onClick={() => onSort("rank")}>RANK{getSortIndicator("rank")}</th>
               <th style={sortableThStyle(sortField === "name")} onClick={() => onSort("name")}>NAME{getSortIndicator("name")}</th>
               <th style={{ ...sortableThStyle(sortField === "gloryWarStatus"), backgroundColor: 'rgba(176, 38, 255, 0.2)', borderLeft: '1px solid rgba(176, 38, 255, 0.4)', borderRight: '1px solid rgba(176, 38, 255, 0.4)', color: 'var(--accent-purple)', fontWeight: 'bold' }} onClick={() => onSort("gloryWarStatus")}>GLORY WAR{getSortIndicator("gloryWarStatus")}</th>
