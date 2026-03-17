@@ -22,6 +22,7 @@ type RosterEntry = {
   roleName: string | null;
   isActive: boolean;
   disabledByUser: boolean;
+  isOnline: boolean;
   lastLoginAt: string | Date | null;
 };
 
@@ -187,7 +188,13 @@ export default function AdminPanel({
                     {entry.hasAccount ? `Role: ${entry.roleName ?? "Unassigned"}` : "No account yet"}
                   </div>
                   <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
-                    Last connection: {formatLastConnection(entry.lastLoginAt)}
+                    Status:{" "}
+                    <span style={{ color: entry.isOnline ? "var(--accent-neon)" : "var(--text-muted)" }}>
+                      {entry.isOnline ? "Online" : "Offline"}
+                    </span>
+                  </div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                    Last connection: {formatLastConnection(entry.lastLoginAt, entry.isOnline)}
                   </div>
                   {isCurrentUser && (
                     <div style={{ color: "var(--accent-purple)", fontSize: "0.75rem", marginTop: "0.35rem" }}>
@@ -357,7 +364,11 @@ export default function AdminPanel({
   );
 }
 
-function formatLastConnection(value: string | Date | null) {
+function formatLastConnection(value: string | Date | null, isOnline: boolean) {
+  if (isOnline) {
+    return "Now";
+  }
+
   if (!value) {
     return "Never";
   }

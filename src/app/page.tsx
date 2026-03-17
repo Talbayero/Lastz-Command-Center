@@ -57,6 +57,15 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
           include: {
             player: true,
             role: true,
+            sessions: {
+              where: {
+                expiresAt: {
+                  gt: new Date(),
+                },
+              },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
           },
         })
       : Promise.resolve([]),
@@ -152,6 +161,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                     roleName: account?.role.name ?? null,
                     isActive: account?.isActive ?? true,
                     disabledByUser: account?.disabledByUser ?? false,
+                    isOnline: Boolean(account?.sessions.length),
                     lastLoginAt: account?.lastLoginAt ?? null,
                   };
                 })}
