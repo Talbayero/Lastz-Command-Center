@@ -134,6 +134,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
               <BugList initialBugs={bugData} />
             ) : (
               <AdminPanel
+                currentUserId={currentUser.id}
                 initialRoles={adminRoles.map((role) => ({
                   id: role.id,
                   name: role.name,

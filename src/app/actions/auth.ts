@@ -231,7 +231,14 @@ export async function adminUpdateUser(input: {
   disabledByUser: boolean;
 }) {
   try {
-    await requirePermission("manageUsers");
+    const actingUser = await requirePermission("manageUsers");
+
+    if (actingUser.id === input.userId) {
+      return {
+        success: false,
+        error: "Use the account panel to manage your own account. Admin self-edits are protected.",
+      };
+    }
 
     await prisma.user.update({
       where: { id: input.userId },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { adminCreateUserAccount, adminUpdateUser, createRole, updateRole } from "@/app/actions/auth";
@@ -28,9 +28,11 @@ type RosterEntry = {
 export default function AdminPanel({
   initialRoles,
   initialRoster,
+  currentUserId,
 }: {
   initialRoles: RoleRecord[];
   initialRoster: RosterEntry[];
+  currentUserId: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -46,6 +48,14 @@ export default function AdminPanel({
     () => roles.find((role) => role.name === "Alliance Member")?.id ?? roles[0]?.id ?? "",
     [roles]
   );
+
+  useEffect(() => {
+    setRoles(initialRoles);
+  }, [initialRoles]);
+
+  useEffect(() => {
+    setRoster(initialRoster);
+  }, [initialRoster]);
 
   const saveUser = (entry: RosterEntry) => {
     if (!entry.userId || !entry.roleId) return;
@@ -144,6 +154,11 @@ export default function AdminPanel({
           <div className="flex-col gap-3">
             {roster.map((entry) => (
               <div key={entry.playerId} style={panelStyle}>
+                {(() => {
+                  const isCurrentUser = entry.userId === currentUserId;
+
+                  return (
+                    <>
                 <div style={{ minWidth: "200px" }}>
                   <div style={{ fontWeight: 700 }}>{entry.playerName}</div>
                   <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
@@ -152,11 +167,17 @@ export default function AdminPanel({
                   <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
                     Last connection: {formatLastConnection(entry.lastLoginAt)}
                   </div>
+                  {isCurrentUser && (
+                    <div style={{ color: "var(--accent-purple)", fontSize: "0.75rem", marginTop: "0.35rem" }}>
+                      Protected: manage your own account from the account panel.
+                    </div>
+                  )}
                 </div>
 
                 <select
                   className="cyber-input"
                   value={entry.roleId || defaultRoleId}
+                  disabled={isCurrentUser}
                   onChange={(e) =>
                     setRoster((prev) =>
                       prev.map((item) => (item.playerId === entry.playerId ? { ...item, roleId: e.target.value } : item))
@@ -172,14 +193,15 @@ export default function AdminPanel({
                 {entry.hasAccount ? (
                   <>
                     <label style={toggleLabelStyle}>
-                      <input
-                        type="checkbox"
-                        checked={entry.isActive}
-                        onChange={(e) =>
-                          setRoster((prev) =>
-                            prev.map((item) =>
-                              item.playerId === entry.playerId ? { ...item, isActive: e.target.checked } : item
-                            )
+                        <input
+                          type="checkbox"
+                          checked={entry.isActive}
+                          disabled={isCurrentUser}
+                          onChange={(e) =>
+                            setRoster((prev) =>
+                              prev.map((item) =>
+                                item.playerId === entry.playerId ? { ...item, isActive: e.target.checked } : item
+                              )
                           )
                         }
                       />
@@ -187,21 +209,22 @@ export default function AdminPanel({
                     </label>
 
                     <label style={toggleLabelStyle}>
-                      <input
-                        type="checkbox"
-                        checked={!entry.disabledByUser}
-                        onChange={(e) =>
-                          setRoster((prev) =>
-                            prev.map((item) =>
-                              item.playerId === entry.playerId ? { ...item, disabledByUser: !e.target.checked } : item
-                            )
+                        <input
+                          type="checkbox"
+                          checked={!entry.disabledByUser}
+                          disabled={isCurrentUser}
+                          onChange={(e) =>
+                            setRoster((prev) =>
+                              prev.map((item) =>
+                                item.playerId === entry.playerId ? { ...item, disabledByUser: !e.target.checked } : item
+                              )
                           )
                         }
                       />
                       User Enabled
                     </label>
 
-                    <button className="cyber-button" onClick={() => saveUser(entry)} disabled={isPending}>
+                    <button className="cyber-button" onClick={() => saveUser(entry)} disabled={isPending || isCurrentUser}>
                       SAVE USER
                     </button>
                   </>
@@ -215,6 +238,9 @@ export default function AdminPanel({
                     </button>
                   </>
                 )}
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>
