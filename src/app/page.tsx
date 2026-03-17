@@ -7,6 +7,7 @@ import ScoringEngine from "@/components/ScoringEngine";
 import Roster from "@/components/Roster";
 import BugReportModal from "@/components/BugReportModal";
 import BugList from "@/components/BugList";
+import AllianceOverview from "@/components/AllianceOverview";
 import prisma from "@/utils/db";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 
@@ -38,6 +39,13 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
         <nav className="flex-row gap-2" style={{ backgroundColor: 'var(--bg-input)', padding: '4px', borderRadius: '8px' }}>
           <Link 
+            href="/?view=overview" 
+            className={`cyber-button ${currentView === 'overview' ? 'primary' : ''}`}
+            style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}
+          >
+            Overview
+          </Link>
+          <Link 
             href="/?view=performance" 
             className={`cyber-button ${currentView === 'performance' ? 'primary' : ''}`}
             style={{ padding: '0.5rem 1rem', fontSize: '0.75rem' }}
@@ -65,11 +73,14 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         <section className={currentView === 'performance' ? "col-span-8" : "col-span-12"}>
           <div className="cyber-card flex-col gap-4">
             <h2 style={{ color: 'var(--accent-neon)', fontSize: '1.25rem' }}>
-              {currentView === 'performance' ? 'TOP PERFORMERS' : 
+              {currentView === 'overview' ? 'ALLIANCE ANALYTICS' :
+               currentView === 'performance' ? 'TOP PERFORMERS' : 
                currentView === 'roster' ? 'ALLIANCE ROSTER' : 'REPORTED ANOMALIES'}
             </h2>
             
-            {currentView === 'performance' ? (
+            {currentView === 'overview' ? (
+              <AllianceOverview players={rosterData} bugs={bugData} />
+            ) : currentView === 'performance' ? (
               <Leaderboard selectedName={selectedPlayerData?.name} />
             ) : currentView === 'roster' ? (
               <Roster initialPlayers={rosterData} />

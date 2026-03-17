@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,8 +23,8 @@ export default function RootLayout({
             <h2 className="text-gradient-primary">BOM // COMMAND CENTER</h2>
             <div className="flex-row gap-4 items-center">
               <BugReportModal />
-              <button className="cyber-button">Alliance Overview</button>
-              <button className="cyber-button">Upload Profile</button>
+              <Link href="/?view=overview" className="cyber-button">Alliance Overview</Link>
+              <Link href="/?view=performance" className="cyber-button">Upload Profile</Link>
             </div>
           </div>
         </nav>
