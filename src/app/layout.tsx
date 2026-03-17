@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import "./globals.css";
 import BugReportModal from "@/components/BugReportModal";
 import AccountPanel from "@/components/AccountPanel";
@@ -18,10 +17,6 @@ export default async function RootLayout({
 }>) {
   const currentUser = await getCurrentUser();
   const canManageBugs = hasPermission(currentUser, "manageBugs");
-  const canViewOverview = hasPermission(currentUser, "viewAllianceOverview");
-  const canViewAllianceDuel = hasPermission(currentUser, "viewAllianceDuel");
-  const canUploadProfile = hasPermission(currentUser, "uploadProfile");
-  const canAccessAdmin = hasPermission(currentUser, "manageUsers") || hasPermission(currentUser, "manageRoles");
 
   return (
     <html lang="en">
@@ -33,10 +28,6 @@ export default async function RootLayout({
               {currentUser ? (
                 <>
                   {canManageBugs && <BugReportModal />}
-                  {canViewOverview && <Link href="/?view=overview" className="cyber-button">Alliance Overview</Link>}
-                  {canViewAllianceDuel && <Link href="/?view=duel" className="cyber-button">Alliance Duel</Link>}
-                  {canUploadProfile && <Link href="/?view=performance" className="cyber-button">Upload Profile</Link>}
-                  {canAccessAdmin && <Link href="/?view=admin" className="cyber-button">Administrator</Link>}
                   <AccountPanel
                     playerName={currentUser.playerName}
                     roleName={currentUser.roleName}
