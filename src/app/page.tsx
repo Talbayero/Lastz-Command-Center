@@ -49,10 +49,9 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   ].filter(Boolean) as string[];
 
   const currentView = availableViews.includes(requestedView) ? requestedView : availableViews[0] || "performance";
+  const shouldLoadDuelData = currentView === "duel" && canViewAllianceDuel;
 
-  await ensureAllianceDuelRequirements();
-
-  const [allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers, duelRequirements, duelScores] = await Promise.all([
+  const [allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
     getAllianceAverage(),
     getSelectedPlayer(targetName),
     getRosterData(),
@@ -76,21 +75,40 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
           },
         })
       : Promise.resolve([]),
-    canViewAllianceDuel
-      ? prisma.allianceDuelRequirement.findMany({
-          orderBy: { dayKey: "asc" },
-        })
-      : Promise.resolve([]),
-    canViewAllianceDuel
-      ? prisma.allianceDuelScore.findMany({
-          include: {
-            player: {
-              select: { id: true, name: true, alliance: true },
-            },
-          },
-        })
-      : Promise.resolve([]),
   ]);
+
+  let duelRequirements: Array<{ dayKey: string; eventName: string; minimumScore: number }> = [];
+  let duelScores: Array<{
+    playerId: string;
+    scoreType: string;
+    dayKey: string;
+    score: number;
+    rank: number | null;
+  }> = [];
+  let duelLoadError: string | null = null;
+
+  if (shouldLoadDuelData) {
+    try {
+      await ensureAllianceDuelRequirements();
+      [duelRequirements, duelScores] = await Promise.all([
+        prisma.allianceDuelRequirement.findMany({
+          orderBy: { dayKey: "asc" },
+        }),
+        prisma.allianceDuelScore.findMany({
+          select: {
+            playerId: true,
+            scoreType: true,
+            dayKey: true,
+            score: true,
+            rank: true,
+          },
+        }),
+      ]);
+    } catch (error: any) {
+      console.error("ALLIANCE DUEL PAGE LOAD ERROR:", error);
+      duelLoadError = "Alliance Duel data is temporarily unavailable. Refresh in a moment and try again.";
+    }
+  }
 
   const effectiveName = selectedPlayerData?.name || currentUser.playerName || "Alliance Member";
   const allPlayerNames = allPlayers.map((player) => player.name);
@@ -159,37 +177,53 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
             {currentView === "overview" ? (
               <AllianceOverview players={rosterData} bugs={bugData} />
             ) : currentView === "duel" ? (
-              <AllianceDuelPanel
-                initialPlayers={allPlayers.map((player) => {
-                  const playerScores = duelScores.filter((entry) => entry.playerId === player.id);
-                  return {
-                    id: player.id,
-                    name: player.name,
-                    scores: {
-                      daily: Object.fromEntries(
-                        ALLIANCE_DUEL_DAYS.map((dayKey) => {
-                          const entry = playerScores.find((score) => score.scoreType === "daily" && score.dayKey === dayKey);
-                          return [dayKey, entry ? { score: entry.score, rank: entry.rank } : null];
-                        })
-                      ),
-                      weekly: (() => {
-                        const entry = playerScores.find((score) => score.scoreType === "weekly" && score.dayKey === "ALL");
-                        return entry ? { score: entry.score, rank: entry.rank } : null;
-                      })(),
-                      overall: (() => {
-                        const entry = playerScores.find((score) => score.scoreType === "overall" && score.dayKey === "ALL");
-                        return entry ? { score: entry.score, rank: entry.rank } : null;
-                      })(),
-                    },
-                  };
-                })}
-                initialRequirements={duelRequirements.map((entry) => ({
-                  dayKey: entry.dayKey as (typeof ALLIANCE_DUEL_DAYS)[number],
-                  eventName: entry.eventName,
-                  minimumScore: entry.minimumScore,
-                }))}
-                canManage={canManageAllianceDuel}
-              />
+              duelLoadError ? (
+                <div
+                  style={{
+                    padding: "1rem 1.1rem",
+                    borderRadius: "6px",
+                    border: "1px solid var(--accent-red)",
+                    backgroundColor: "rgba(255,51,102,0.08)",
+                    color: "var(--accent-red)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  {duelLoadError}
+                </div>
+              ) : (
+                <AllianceDuelPanel
+                  initialPlayers={allPlayers.map((player) => {
+                    const playerScores = duelScores.filter((entry) => entry.playerId === player.id);
+                    return {
+                      id: player.id,
+                      name: player.name,
+                      scores: {
+                        daily: Object.fromEntries(
+                          ALLIANCE_DUEL_DAYS.map((dayKey) => {
+                            const entry = playerScores.find((score) => score.scoreType === "daily" && score.dayKey === dayKey);
+                            return [dayKey, entry ? { score: entry.score, rank: entry.rank } : null];
+                          })
+                        ),
+                        weekly: (() => {
+                          const entry = playerScores.find((score) => score.scoreType === "weekly" && score.dayKey === "ALL");
+                          return entry ? { score: entry.score, rank: entry.rank } : null;
+                        })(),
+                        overall: (() => {
+                          const entry = playerScores.find((score) => score.scoreType === "overall" && score.dayKey === "ALL");
+                          return entry ? { score: entry.score, rank: entry.rank } : null;
+                        })(),
+                      },
+                    };
+                  })}
+                  initialRequirements={duelRequirements.map((entry) => ({
+                    dayKey: entry.dayKey as (typeof ALLIANCE_DUEL_DAYS)[number],
+                    eventName: entry.eventName,
+                    minimumScore: entry.minimumScore,
+                  }))}
+                  canManage={canManageAllianceDuel}
+                />
+              )
             ) : currentView === "performance" ? (
               <Leaderboard selectedName={selectedPlayerData?.name} />
             ) : currentView === "roster" ? (
