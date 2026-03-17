@@ -9,6 +9,7 @@ import {
   hashPassword,
   requireCurrentUser,
   requirePermission,
+  TEMP_PASSWORD,
   validatePassword,
   verifyPassword,
 } from "@/utils/auth";
@@ -144,9 +145,14 @@ export async function loginUser(input: CredentialsInput) {
       return { success: false, error: "This account is disabled. Ask an admin to re-enable it." };
     }
 
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
     await createSession(user.id);
     revalidatePath("/");
-    return { success: true };
+    return { success: true, mustChangePassword: user.mustChangePassword };
   } catch (error: any) {
     console.error("LOGIN ERROR:", error);
     return { success: false, error: error.message || "Failed to sign in." };
@@ -186,9 +192,13 @@ export async function changePassword(input: {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash: hashPassword(input.newPassword) },
+      data: {
+        passwordHash: hashPassword(input.newPassword),
+        mustChangePassword: false,
+      },
     });
 
+    revalidatePath("/");
     return { success: true };
   } catch (error: any) {
     console.error("CHANGE PASSWORD ERROR:", error);
@@ -243,15 +253,9 @@ export async function adminUpdateUser(input: {
 export async function adminCreateUserAccount(input: {
   playerId: string;
   roleId: string;
-  password: string;
 }) {
   try {
     await requirePermission("manageUsers");
-
-    const passwordError = validatePassword(input.password);
-    if (passwordError) {
-      return { success: false, error: passwordError };
-    }
 
     const existingUser = await prisma.user.findUnique({
       where: { playerId: input.playerId },
@@ -266,7 +270,8 @@ export async function adminCreateUserAccount(input: {
       data: {
         playerId: input.playerId,
         roleId: input.roleId,
-        passwordHash: hashPassword(input.password),
+        passwordHash: hashPassword(TEMP_PASSWORD),
+        mustChangePassword: true,
       },
     });
 

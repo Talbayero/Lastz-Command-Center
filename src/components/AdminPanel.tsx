@@ -22,6 +22,7 @@ type RosterEntry = {
   roleName: string | null;
   isActive: boolean;
   disabledByUser: boolean;
+  lastLoginAt: string | Date | null;
 };
 
 export default function AdminPanel({
@@ -38,7 +39,6 @@ export default function AdminPanel({
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRolePermissions, setNewRolePermissions] = useState<RolePermissions>(() => emptyRolePermissions());
-  const [newAccountPasswords, setNewAccountPasswords] = useState<Record<string, string>>({});
   const [userPanelOpen, setUserPanelOpen] = useState(true);
   const [rolePanelOpen, setRolePanelOpen] = useState(true);
 
@@ -71,7 +71,6 @@ export default function AdminPanel({
   };
 
   const createAccount = (entry: RosterEntry) => {
-    const password = newAccountPasswords[entry.playerId] ?? "";
     const selectedRoleId = entry.roleId || defaultRoleId;
     if (!selectedRoleId) {
       setMessage({ type: "error", text: "No role is available for this account yet." });
@@ -83,12 +82,10 @@ export default function AdminPanel({
       const result = await adminCreateUserAccount({
         playerId: entry.playerId,
         roleId: selectedRoleId,
-        password,
       });
 
       if (result.success) {
         setMessage({ type: "success", text: `${entry.playerName} account created.` });
-        setNewAccountPasswords((prev) => ({ ...prev, [entry.playerId]: "" }));
         router.refresh();
       } else {
         setMessage({ type: "error", text: result.error || "Failed to create account." });
@@ -152,6 +149,9 @@ export default function AdminPanel({
                   <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
                     {entry.hasAccount ? `Role: ${entry.roleName ?? "Unassigned"}` : "No account yet"}
                   </div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                    Last connection: {formatLastConnection(entry.lastLoginAt)}
+                  </div>
                 </div>
 
                 <select
@@ -207,16 +207,9 @@ export default function AdminPanel({
                   </>
                 ) : (
                   <>
-                    <input
-                      type="password"
-                      className="cyber-input"
-                      placeholder="Temporary password"
-                      value={newAccountPasswords[entry.playerId] ?? ""}
-                      onChange={(e) =>
-                        setNewAccountPasswords((prev) => ({ ...prev, [entry.playerId]: e.target.value }))
-                      }
-                      style={{ minWidth: "180px" }}
-                    />
+                    <div style={{ minWidth: "180px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                      Temp password: 123456789
+                    </div>
                     <button className="cyber-button primary" onClick={() => createAccount(entry)} disabled={isPending}>
                       CREATE ACCOUNT
                     </button>
@@ -309,6 +302,19 @@ export default function AdminPanel({
       </div>
     </div>
   );
+}
+
+function formatLastConnection(value: string | Date | null) {
+  if (!value) {
+    return "Never";
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown";
+  }
+
+  return date.toLocaleString();
 }
 
 function emptyRolePermissions(): RolePermissions {

@@ -7,12 +7,14 @@ import { changePassword, disableOwnAccount, logoutUser } from "@/app/actions/aut
 export default function AccountPanel({
   playerName,
   roleName,
+  forcePasswordChange = false,
 }: {
   playerName: string;
   roleName: string;
+  forcePasswordChange?: boolean;
 }) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(forcePasswordChange);
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [formData, setFormData] = useState({
@@ -28,6 +30,8 @@ export default function AccountPanel({
       if (result.success) {
         setMessage({ type: "success", text: "Password updated successfully." });
         setFormData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+        setIsOpen(false);
+        router.refresh();
       } else {
         setMessage({ type: "error", text: result.error || "Failed to update password." });
       }
@@ -64,11 +68,18 @@ export default function AccountPanel({
       {isOpen && (
         <div style={overlayStyle}>
           <div className="cyber-card" style={{ width: "100%", maxWidth: "520px", position: "relative" }}>
-            <button onClick={() => setIsOpen(false)} style={closeStyle}>×</button>
+            {!forcePasswordChange && <button onClick={() => setIsOpen(false)} style={closeStyle}>×</button>}
             <h2 style={{ marginBottom: "0.25rem" }}>Account Control</h2>
             <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>
-              Signed in as {playerName}. Update your password or disable your own account here.
+              {forcePasswordChange
+                ? `Signed in as ${playerName}. Your temporary password must be changed before you can use the command center.`
+                : `Signed in as ${playerName}. Update your password or disable your own account here.`}
             </p>
+            {forcePasswordChange && (
+              <p style={{ color: "var(--accent-neon)", marginBottom: "1rem", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
+                Temporary password: 123456789
+              </p>
+            )}
 
             {message && <div style={messageStyle(message.type)}>{message.text}</div>}
 
@@ -100,17 +111,21 @@ export default function AccountPanel({
               <button className="cyber-button primary" onClick={onPasswordChange} disabled={isPending}>
                 {isPending ? "UPDATING..." : "CHANGE PASSWORD"}
               </button>
-              <button className="cyber-button" onClick={onLogout} disabled={isPending}>
-                SIGN OUT
-              </button>
-              <button
-                className="cyber-button"
-                onClick={onDisable}
-                disabled={isPending}
-                style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
-              >
-                DISABLE ACCOUNT
-              </button>
+              {!forcePasswordChange && (
+                <>
+                  <button className="cyber-button" onClick={onLogout} disabled={isPending}>
+                    SIGN OUT
+                  </button>
+                  <button
+                    className="cyber-button"
+                    onClick={onDisable}
+                    disabled={isPending}
+                    style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
+                  >
+                    DISABLE ACCOUNT
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

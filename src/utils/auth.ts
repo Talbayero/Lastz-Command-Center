@@ -13,6 +13,7 @@ import {
 
 export const SESSION_COOKIE = "bom_session";
 const SESSION_TTL_DAYS = 30;
+export const TEMP_PASSWORD = "123456789";
 
 const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions; isSystem: boolean }> = [
   {
@@ -190,6 +191,8 @@ export async function getCurrentUser() {
     permissions: normalizePermissions(session.user.role.permissions),
     isActive: session.user.isActive,
     disabledByUser: session.user.disabledByUser,
+    mustChangePassword: session.user.mustChangePassword,
+    lastLoginAt: session.user.lastLoginAt,
   };
 }
 
@@ -210,6 +213,9 @@ export function hasPermission(
 
 export async function requirePermission(permission: PermissionKey) {
   const user = await requireCurrentUser();
+  if (user.mustChangePassword) {
+    throw new Error("Change your temporary password before using the command center.");
+  }
   if (!hasPermission(user, permission)) {
     throw new Error("You do not have permission to do that.");
   }

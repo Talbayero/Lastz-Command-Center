@@ -35,7 +35,11 @@ export default async function RootLayout({
                   {canViewOverview && <Link href="/?view=overview" className="cyber-button">Alliance Overview</Link>}
                   {canUploadProfile && <Link href="/?view=performance" className="cyber-button">Upload Profile</Link>}
                   {canAccessAdmin && <Link href="/?view=admin" className="cyber-button">Administrator</Link>}
-                  <AccountPanel playerName={currentUser.playerName} roleName={currentUser.roleName} />
+                  <AccountPanel
+                    playerName={currentUser.playerName}
+                    roleName={currentUser.roleName}
+                    forcePasswordChange={currentUser.mustChangePassword}
+                  />
                 </>
               ) : (
                 <span style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>

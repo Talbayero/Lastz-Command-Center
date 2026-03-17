@@ -151,6 +151,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                     roleName: account?.role.name ?? null,
                     isActive: account?.isActive ?? true,
                     disabledByUser: account?.disabledByUser ?? false,
+                    lastLoginAt: account?.lastLoginAt ?? null,
                   };
                 })}
               />

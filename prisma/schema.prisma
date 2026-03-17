@@ -61,6 +61,8 @@ model User {
   passwordHash   String
   isActive       Boolean       @default(true)
   disabledByUser Boolean       @default(false)
+  mustChangePassword Boolean   @default(false)
+  lastLoginAt    DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   sessions       UserSession[]
