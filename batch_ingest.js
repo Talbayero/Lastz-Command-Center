@@ -6,7 +6,10 @@ const Tesseract = require("tesseract.js");
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
-const BOM_DIR = "C:\\Users\\Teddy A\\OneDrive\\Escritorio\\BOM";
+const DEFAULT_BOM_DIR = "C:\\Users\\Teddy A\\OneDrive\\Escritorio\\BOM";
+const inputDirArg = process.argv.find((arg) => !arg.startsWith("--") && arg !== process.argv[0] && arg !== process.argv[1]);
+const BOM_DIR = inputDirArg || process.env.BOM_DIR || DEFAULT_BOM_DIR;
+const SHOULD_CLEAR = process.argv.includes("--clear") || process.env.CLEAR_ROSTER === "1";
 const GEMINI_MODEL = "gemini-2.5-flash";
 const SCORE_WEIGHTS = {
   kills: 0.30,
@@ -189,8 +192,12 @@ async function upsertPlayerSnapshot(data, fallbackName) {
 
 async function ingest() {
   const files = fs.readdirSync(BOM_DIR).filter((file) => file.toLowerCase().endsWith(".png"));
-  await clearRosterData();
-  console.log(`Starting ingestion of ${files.length} BOM screenshots...`);
+  if (SHOULD_CLEAR) {
+    await clearRosterData();
+    console.log("Cleared existing player and snapshot data before import.");
+  }
+
+  console.log(`Starting ingestion of ${files.length} screenshots from ${BOM_DIR}...`);
 
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
