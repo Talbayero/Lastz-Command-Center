@@ -48,37 +48,31 @@ async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: st
     'Use this schema: {"entries":[{"rank":1,"name":"Player Name","score":123456}]}',
     "Extract only visible players.",
     "Do not invent missing players.",
+    "Each score must belong to the same horizontal row as the player name and rank.",
+    "Do not borrow a score from a different player row.",
+    "Ignore alliance tags like [BOM] and ignore decorative UI text.",
     "Scores must be integers with no commas.",
     "If rank is not visible, use null.",
   ].join(" ");
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
+  const response = await fetchGeminiWithRetry(apiKey, {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
           {
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: input.mimeType,
-                  data: input.imageBase64,
-                },
-              },
-            ],
+            inlineData: {
+              mimeType: input.mimeType,
+              data: input.imageBase64,
+            },
           },
         ],
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
-      }),
-    }
-  );
+      },
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+    },
+  });
 
   if (!response.ok) {
     throw new Error(`Gemini request failed with status ${response.status}`);
@@ -99,6 +93,36 @@ async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: st
     rank: normalizeRank(entry?.rank),
     score: normalizeScore(entry?.score),
   }));
+}
+
+async function fetchGeminiWithRetry(apiKey: string, body: Record<string, unknown>) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (response.ok) {
+      return response;
+    }
+
+    if (response.status !== 429 || attempt === 3) {
+      throw new Error(`Gemini request failed with status ${response.status}`);
+    }
+
+    await wait(1200 * (attempt + 1));
+  }
+
+  throw new Error("Gemini request failed after retries.");
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseGeminiJsonResponse(rawText: string) {
@@ -243,7 +267,7 @@ export async function processAllianceDuelScreenshot(input: {
 
     const playersByNormalizedName = new Map(players.map((player) => [normalizePlayerName(player.name), player]));
 
-    const matchedEntries: Array<{ playerId: string; playerName: string; score: number; rank: number | null }> = [];
+    const matchedEntries: Array<{ playerId: string; playerName: string; score: number; rank: number | null; detectedName: string }> = [];
     const unmatchedEntries: Array<{ name: string; score: number; rank: number | null }> = [];
 
     for (const entry of parsedEntries) {
@@ -279,6 +303,7 @@ export async function processAllianceDuelScreenshot(input: {
         playerName: player.name,
         score: entry.score,
         rank: entry.rank,
+        detectedName: entry.name,
       });
     }
 
@@ -316,6 +341,22 @@ export async function processAllianceDuelScreenshot(input: {
       unmatchedNames: unmatchedEntries.map((entry) => entry.name),
       unmatchedEntries,
       updatedPlayers: matchedEntries,
+      reviewEntries: [
+        ...matchedEntries.map((entry) => ({
+          detectedName: entry.detectedName,
+          matchedPlayerId: entry.playerId,
+          matchedPlayerName: entry.playerName,
+          score: entry.score,
+          rank: entry.rank,
+        })),
+        ...unmatchedEntries.map((entry) => ({
+          detectedName: entry.name,
+          matchedPlayerId: null,
+          matchedPlayerName: null,
+          score: entry.score,
+          rank: entry.rank,
+        })),
+      ],
     };
   } catch (error: any) {
     console.error("ALLIANCE DUEL SCREENSHOT ERROR:", error);

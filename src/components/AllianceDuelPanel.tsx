@@ -41,6 +41,13 @@ type UnmatchedDuelEntry = {
   rank: number | null;
 };
 type MatchDraftState = Record<string, string>;
+type UploadReviewEntry = {
+  detectedName: string;
+  matchedPlayerId: string | null;
+  matchedPlayerName: string | null;
+  score: number;
+  rank: number | null;
+};
 
 const scoreTypeLabels: Record<AllianceDuelScoreType, string> = {
   daily: "Daily Rank",
@@ -69,6 +76,7 @@ export default function AllianceDuelPanel({
   );
   const [unmatchedEntries, setUnmatchedEntries] = useState<UnmatchedDuelEntry[]>([]);
   const [matchDrafts, setMatchDrafts] = useState<MatchDraftState>({});
+  const [uploadReviewEntries, setUploadReviewEntries] = useState<UploadReviewEntry[]>([]);
 
   const activeRequirement = requirementDraft[activeDayKey];
   const activePlayers = useMemo(() => {
@@ -237,6 +245,47 @@ export default function AllianceDuelPanel({
     });
   };
 
+  const applyReviewedEntry = (entry: UploadReviewEntry) => {
+    const playerId = matchDrafts[getReviewEntryKey(entry)];
+    if (!playerId) {
+      setMessage({ type: "error", text: `Choose a player for ${entry.detectedName} first.` });
+      return;
+    }
+
+    setMessage(null);
+    startTransition(async () => {
+      const result = await saveAllianceDuelManualScore({
+        playerId,
+        scoreType: activeScoreType,
+        dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
+        score: entry.score,
+        rank: entry.rank,
+      });
+
+      if (!result.success) {
+        setMessage({ type: "error", text: result.error || "Failed to apply reviewed duel score." });
+        return;
+      }
+
+      const nextPlayers = applyUpdatedPlayers(players, [
+        {
+          playerId,
+          score: entry.score,
+          rank: entry.rank,
+        },
+      ]);
+      setPlayers(nextPlayers);
+      setManualDrafts(buildManualDrafts(nextPlayers, activeScoreType, activeDayKey));
+      setUploadReviewEntries((prev) => prev.filter((candidate) => getReviewEntryKey(candidate) !== getReviewEntryKey(entry)));
+      setMatchDrafts((prev) => {
+        const next = { ...prev };
+        delete next[getReviewEntryKey(entry)];
+        return next;
+      });
+      setMessage({ type: "success", text: `Applied ${entry.detectedName} to the selected player.` });
+    });
+  };
+
   const applyUpdatedPlayers = (
     currentPlayers: DuelPlayer[],
     updatedPlayers: Array<{ playerId: string; score: number; rank: number | null }>
@@ -280,6 +329,7 @@ export default function AllianceDuelPanel({
       let totalAppliedCount = 0;
       const unmatchedNames = new Set<string>();
       const nextUnmatchedEntries: UnmatchedDuelEntry[] = [];
+      const nextReviewEntries: UploadReviewEntry[] = [];
 
       for (const file of fileList) {
         const imageBase64 = await fileToBase64(file);
@@ -308,6 +358,9 @@ export default function AllianceDuelPanel({
         for (const entry of result.unmatchedEntries ?? []) {
           nextUnmatchedEntries.push(entry);
         }
+        for (const entry of result.reviewEntries ?? []) {
+          nextReviewEntries.push(entry);
+        }
 
         nextPlayers = applyUpdatedPlayers(nextPlayers, result.updatedPlayers ?? []);
       }
@@ -315,9 +368,19 @@ export default function AllianceDuelPanel({
       setPlayers(nextPlayers);
       setManualDrafts(buildManualDrafts(nextPlayers, activeScoreType, activeDayKey));
       setUnmatchedEntries(nextUnmatchedEntries);
+      setUploadReviewEntries(nextReviewEntries);
       setMatchDrafts(
-        nextUnmatchedEntries.reduce<MatchDraftState>((acc, entry) => {
-          acc[getUnmatchedEntryKey(entry)] = "";
+        [
+          ...nextUnmatchedEntries.map((entry) => ({
+            key: getUnmatchedEntryKey(entry),
+            playerId: "",
+          })),
+          ...nextReviewEntries.map((entry) => ({
+            key: getReviewEntryKey(entry),
+            playerId: entry.matchedPlayerId ?? "",
+          })),
+        ].reduce<MatchDraftState>((acc, entry) => {
+          acc[entry.key] = entry.playerId;
           return acc;
         }, {})
       );
@@ -538,6 +601,52 @@ export default function AllianceDuelPanel({
         </section>
       )}
 
+      {canManage && uploadReviewEntries.length > 0 && (
+        <section className="cyber-card flex-col gap-4">
+          <h3 style={{ color: "var(--accent-neon)" }}>Review Uploaded Scores</h3>
+          <p style={summaryHintStyle}>
+            Every parsed screenshot row appears here so you can confirm the player-score match and correct it when needed.
+          </p>
+          <div className="flex-col gap-3">
+            {uploadReviewEntries.map((entry) => (
+              <div key={getReviewEntryKey(entry)} style={requirementRowStyle}>
+                <div style={{ minWidth: "180px" }}>
+                  <div style={summaryLabelStyle}>Detected Row</div>
+                  <div style={{ color: "var(--text-main)", fontWeight: 700 }}>{entry.detectedName}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "0.82rem" }}>
+                    Score {entry.score.toLocaleString()} {entry.rank ? `| Rank #${entry.rank}` : ""}
+                  </div>
+                </div>
+                <select
+                  className="cyber-input"
+                  value={matchDrafts[getReviewEntryKey(entry)] ?? entry.matchedPlayerId ?? ""}
+                  onChange={(e) =>
+                    setMatchDrafts((prev) => ({
+                      ...prev,
+                      [getReviewEntryKey(entry)]: e.target.value,
+                    }))
+                  }
+                  style={{ minWidth: "220px", flex: 1 }}
+                >
+                  <option value="">Select BOM player...</option>
+                  {players
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.name}
+                      </option>
+                    ))}
+                </select>
+                <button className="cyber-button" onClick={() => applyReviewedEntry(entry)} disabled={isPending}>
+                  APPLY
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="cyber-card flex-col gap-4">
         <h3 style={{ color: "var(--accent-neon)" }}>Alliance Duel Table</h3>
         <div style={tableWrapStyle}>
@@ -620,6 +729,10 @@ function requirementsToMap(requirements: DuelRequirement[]) {
 
 function getUnmatchedEntryKey(entry: UnmatchedDuelEntry) {
   return `${entry.name}::${entry.score}::${entry.rank ?? "na"}`;
+}
+
+function getReviewEntryKey(entry: UploadReviewEntry) {
+  return `${entry.detectedName}::${entry.score}::${entry.rank ?? "na"}::${entry.matchedPlayerId ?? "none"}`;
 }
 
 async function fileToBase64(file: File) {
