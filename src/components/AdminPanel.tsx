@@ -39,6 +39,8 @@ export default function AdminPanel({
   const [roles, setRoles] = useState(initialRoles);
   const [roster, setRoster] = useState(initialRoster);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [activeUserActionId, setActiveUserActionId] = useState<string | null>(null);
+  const [recentlySavedUserId, setRecentlySavedUserId] = useState<string | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRolePermissions, setNewRolePermissions] = useState<RolePermissions>(() => emptyRolePermissions());
   const [userPanelOpen, setUserPanelOpen] = useState(true);
@@ -64,6 +66,8 @@ export default function AdminPanel({
     const roleName = roles.find((role) => role.id === roleId)?.name ?? entry.roleName;
 
     setMessage(null);
+    setActiveUserActionId(userId);
+    setRecentlySavedUserId(null);
     startTransition(async () => {
       const result = await adminUpdateUser({
         userId,
@@ -87,9 +91,12 @@ export default function AdminPanel({
           )
         );
         setMessage({ type: "success", text: `${entry.playerName} updated.` });
+        setRecentlySavedUserId(userId);
+        window.setTimeout(() => setRecentlySavedUserId((current) => (current === userId ? null : current)), 2500);
       } else {
         setMessage({ type: "error", text: result.error || "Failed to update user." });
       }
+      setActiveUserActionId(null);
     });
   };
 
@@ -169,6 +176,8 @@ export default function AdminPanel({
               <div key={entry.playerId} style={panelStyle}>
                 {(() => {
                   const isCurrentUser = entry.userId === currentUserId;
+                  const isSavingThisUser = entry.userId === activeUserActionId;
+                  const wasSavedThisUser = entry.userId === recentlySavedUserId;
 
                   return (
                     <>
@@ -238,8 +247,13 @@ export default function AdminPanel({
                     </label>
 
                     <button className="cyber-button" onClick={() => saveUser(entry)} disabled={isPending || isCurrentUser}>
-                      SAVE USER
+                      {isSavingThisUser ? "SAVING..." : wasSavedThisUser ? "SAVED" : "SAVE USER"}
                     </button>
+                    {wasSavedThisUser && (
+                      <span style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                        Changes saved
+                      </span>
+                    )}
                   </>
                 ) : (
                   <>
