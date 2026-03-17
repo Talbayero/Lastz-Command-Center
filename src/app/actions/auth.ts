@@ -290,6 +290,38 @@ export async function adminCreateUserAccount(input: {
   }
 }
 
+export async function adminResetUserPassword(input: { userId: string }) {
+  try {
+    const actingUser = await requirePermission("manageUsers");
+
+    if (actingUser.id === input.userId) {
+      return {
+        success: false,
+        error: "Use the account panel to manage your own password. Admin self-resets are protected.",
+      };
+    }
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: input.userId },
+        data: {
+          passwordHash: hashPassword(TEMP_PASSWORD),
+          mustChangePassword: true,
+        },
+      }),
+      prisma.userSession.deleteMany({
+        where: { userId: input.userId },
+      }),
+    ]);
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("ADMIN RESET PASSWORD ERROR:", error);
+    return { success: false, error: error.message || "Failed to reset password." };
+  }
+}
+
 export async function createRole(input: { name: string; permissions: Partial<Record<PermissionKey, boolean>> }) {
   try {
     await requirePermission("manageRoles");

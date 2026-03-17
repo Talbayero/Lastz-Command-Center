@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { adminCreateUserAccount, adminUpdateUser, createRole, updateRole } from "@/app/actions/auth";
+import {
+  adminCreateUserAccount,
+  adminResetUserPassword,
+  adminUpdateUser,
+  createRole,
+  updateRole,
+} from "@/app/actions/auth";
 import { permissionKeys, permissionLabels, type RolePermissions } from "@/utils/permissions";
 
 type RoleRecord = {
@@ -40,8 +46,9 @@ export default function AdminPanel({
   const [roles, setRoles] = useState(initialRoles);
   const [roster, setRoster] = useState(initialRoster);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [activeUserActionId, setActiveUserActionId] = useState<string | null>(null);
+  const [activeUserAction, setActiveUserAction] = useState<{ userId: string; type: "save" | "reset" } | null>(null);
   const [recentlySavedUserId, setRecentlySavedUserId] = useState<string | null>(null);
+  const [recentlyResetUserId, setRecentlyResetUserId] = useState<string | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRolePermissions, setNewRolePermissions] = useState<RolePermissions>(() => emptyRolePermissions());
   const [userPanelOpen, setUserPanelOpen] = useState(true);
@@ -83,7 +90,7 @@ export default function AdminPanel({
     const roleName = roles.find((role) => role.id === roleId)?.name ?? entry.roleName;
 
     setMessage(null);
-    setActiveUserActionId(userId);
+    setActiveUserAction({ userId, type: "save" });
     setRecentlySavedUserId(null);
     startTransition(async () => {
       const result = await adminUpdateUser({
@@ -113,7 +120,33 @@ export default function AdminPanel({
       } else {
         setMessage({ type: "error", text: result.error || "Failed to update user." });
       }
-      setActiveUserActionId(null);
+      setActiveUserAction(null);
+    });
+  };
+
+  const resetPassword = (entry: RosterEntry) => {
+    if (!entry.userId) return;
+
+    const userId = entry.userId;
+    setMessage(null);
+    setActiveUserAction({ userId, type: "reset" });
+    setRecentlyResetUserId(null);
+
+    startTransition(async () => {
+      const result = await adminResetUserPassword({ userId });
+
+      if (result.success) {
+        setMessage({
+          type: "success",
+          text: `${entry.playerName} password reset to 123456789 and must be changed on next login.`,
+        });
+        setRecentlyResetUserId(userId);
+        window.setTimeout(() => setRecentlyResetUserId((current) => (current === userId ? null : current)), 3000);
+      } else {
+        setMessage({ type: "error", text: result.error || "Failed to reset password." });
+      }
+
+      setActiveUserAction(null);
     });
   };
 
@@ -208,8 +241,12 @@ export default function AdminPanel({
               <div key={entry.playerId} style={panelStyle}>
                 {(() => {
                   const isCurrentUser = entry.userId === currentUserId;
-                  const isSavingThisUser = entry.userId === activeUserActionId;
+                  const isSavingThisUser =
+                    activeUserAction?.userId === entry.userId && activeUserAction.type === "save";
+                  const isResettingThisUser =
+                    activeUserAction?.userId === entry.userId && activeUserAction.type === "reset";
                   const wasSavedThisUser = entry.userId === recentlySavedUserId;
+                  const wasResetThisUser = entry.userId === recentlyResetUserId;
 
                   return (
                     <>
@@ -287,9 +324,21 @@ export default function AdminPanel({
                     <button className="cyber-button" onClick={() => saveUser(entry)} disabled={isPending || isCurrentUser}>
                       {isSavingThisUser ? "SAVING..." : wasSavedThisUser ? "SAVED" : "SAVE USER"}
                     </button>
+                    <button
+                      className="cyber-button"
+                      onClick={() => resetPassword(entry)}
+                      disabled={isPending || isCurrentUser}
+                    >
+                      {isResettingThisUser ? "RESETTING..." : wasResetThisUser ? "RESET" : "RESET PASSWORD"}
+                    </button>
                     {wasSavedThisUser && (
                       <span style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
                         Changes saved
+                      </span>
+                    )}
+                    {wasResetThisUser && (
+                      <span style={{ color: "var(--accent-purple)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                        Temp password restored
                       </span>
                     )}
                   </>
