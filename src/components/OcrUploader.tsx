@@ -6,12 +6,12 @@ import Tesseract from "tesseract.js";
 import { Upload, Loader2, CheckCircle2, PencilLine, ScanLine } from "lucide-react";
 import { savePlayerData } from "@/app/actions/savePlayer";
 import { getPlayers } from "@/app/actions/getPlayers";
+import { extractGeminiName } from "@/app/actions/extractGeminiName";
 
-/** Crop top-right area, scale up, binarize, run Tesseract PSM-7 for name */
-async function extractNameFromImage(file: File): Promise<string> {
+async function cropNameBlob(file: File): Promise<Blob | null> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = async () => {
+    img.onload = () => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d")!;
       const cropX = Math.round(img.width * 0.30);
@@ -30,20 +30,57 @@ async function extractNameFromImage(file: File): Promise<string> {
         d[i] = d[i + 1] = d[i + 2] = bw; d[i + 3] = 255;
       }
       ctx.putImageData(imageData, 0, 0);
-      canvas.toBlob(async (blob) => {
-        if (!blob) { resolve(""); return; }
-        try {
-          const result = await Tesseract.recognize(blob, "eng", { 
-            // @ts-ignore
-            tessedit_pageseg_mode: "7" 
-          } as any);
-          resolve(result.data.text.replace(/[^a-zA-Z ]/g, "").trim().replace(/\s+/g, " "));
-        } catch { resolve(""); }
-      }, "image/png");
+      canvas.toBlob((blob) => resolve(blob), "image/png");
     };
-    img.onerror = () => resolve("");
+    img.onerror = () => resolve(null);
     img.src = URL.createObjectURL(file);
   });
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Failed to encode image"));
+        return;
+      }
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Crop top-right area, try Gemini first, then fallback to Tesseract PSM-7 */
+async function extractNameFromImage(file: File): Promise<string> {
+  const croppedBlob = await cropNameBlob(file);
+  if (!croppedBlob) return "";
+
+  try {
+    const imageBase64 = await blobToBase64(croppedBlob);
+    const geminiResult = await extractGeminiName({
+      imageBase64,
+      mimeType: "image/png",
+    });
+
+    if (geminiResult.success && geminiResult.name) {
+      return geminiResult.name;
+    }
+  } catch {
+    // Fall through to OCR.
+  }
+
+  try {
+    const result = await Tesseract.recognize(croppedBlob, "eng", {
+      // @ts-ignore
+      tessedit_pageseg_mode: "7",
+    } as any);
+    return result.data.text.replace(/[^a-zA-Z ]/g, "").trim().replace(/\s+/g, " ");
+  } catch {
+    return "";
+  }
 }
 
 const EMPTY_STATS = { name: "", kills: 0, totalPower: 0, powerStats: { structure: 0, tech: 0, troop: 0, hero: 0, modVehicle: 0 } };

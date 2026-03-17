@@ -17,6 +17,7 @@ bun dev
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 Set `DATABASE_URL` before running the app so Prisma can connect to your Postgres database.
+Set `GEMINI_API_KEY` if you want Gemini vision to help extract player names from screenshots.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
