@@ -51,13 +51,26 @@ export async function signUpUser(input: CredentialsInput) {
     });
 
     if (!player && isBootstrapAdmin) {
-      player = await prisma.player.create({
-        data: {
-          name: "Tedmeister",
-          alliance: "BOM",
+      const existingTedmeister = await prisma.player.findFirst({
+        where: {
+          name: { equals: "Tedmeister", mode: "insensitive" },
         },
-        select: { id: true, name: true },
+        select: { id: true, name: true, alliance: true },
       });
+
+      player = existingTedmeister
+        ? await prisma.player.update({
+            where: { id: existingTedmeister.id },
+            data: { alliance: "BOM" },
+            select: { id: true, name: true },
+          })
+        : await prisma.player.create({
+            data: {
+              name: "Tedmeister",
+              alliance: "BOM",
+            },
+            select: { id: true, name: true },
+          });
     }
 
     if (!player) {
