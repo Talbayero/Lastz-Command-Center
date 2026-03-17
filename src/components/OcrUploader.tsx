@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { parseLastZProfile } from "@/utils/ocrParser";
 import Tesseract from "tesseract.js";
 import { Upload, Loader2, CheckCircle2, PencilLine, ScanLine } from "lucide-react";
@@ -197,6 +198,7 @@ function StatsForm({ data, setData, players, isPending, onSave }: any) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function OcrUploader() {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [mode, setMode] = useState<"scan" | "manual">("scan");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -219,6 +221,7 @@ export default function OcrUploader() {
           setScanData(null);
           setManualData({ ...EMPTY_STATS });
           getPlayers().then(setExistingPlayers);
+          router.refresh();
         } else {
           setSaveStatus({ type: "error", msg: `❌ Save Failed: ${result.error}` });
         }

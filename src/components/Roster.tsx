@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { deleteRosterPlayer, updateRoster } from "@/app/actions/updateRoster";
 import { Pencil, Check, Trash2, AlertTriangle } from "lucide-react";
 
@@ -60,6 +61,7 @@ function renderStatValue(value: number) {
 }
 
 export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[] }) {
+  const router = useRouter();
   const [players, setPlayers] = useState<PlayerData[]>(initialPlayers);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,6 +83,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
     if (result.success) {
       setMessage({ type: 'success', text: 'Roster updated successfully! 🚀' });
       setEditingRowId(null);
+      router.refresh();
       setTimeout(() => setMessage(null), 3000);
     } else {
       setMessage({ type: 'error', text: result.error || 'Failed to update roster.' });
@@ -111,6 +114,7 @@ export default function Roster({ initialPlayers }: { initialPlayers: PlayerData[
         setEditingRowId(null);
       }
       setMessage({ type: "success", text: `${player.name} deleted successfully.` });
+      router.refresh();
       setTimeout(() => setMessage(null), 3000);
     } else {
       setMessage({ type: "error", text: result.error || "Failed to delete player." });
