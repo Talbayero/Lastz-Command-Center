@@ -147,12 +147,16 @@ function NameAutocomplete({ value, onChange, players }: { value: string; onChang
 }
 
 // ─── Shared stats form ────────────────────────────────────────────────────────
-function StatsForm({ data, setData, players, isPending, onSave }: any) {
+function StatsForm({ data, setData, players, isPending, onSave, lockName = false }: any) {
   return (
     <div className="flex-col gap-4">
       <div className="flex-col gap-2">
         <label className="cyber-label" style={{ color: "var(--accent-purple)" }}>PLAYER NAME</label>
-        <NameAutocomplete value={data.name} onChange={v => setData({ ...data, name: v })} players={players} />
+        {lockName ? (
+          <input className="cyber-input" value={data.name} disabled style={{ opacity: 0.85 }} />
+        ) : (
+          <NameAutocomplete value={data.name} onChange={v => setData({ ...data, name: v })} players={players} />
+        )}
         {!data.name && (
           <p style={{ fontSize: "0.8rem", color: "var(--accent-purple)", marginTop: "4px" }}>
             ⚠️ Enter the player name
@@ -197,18 +201,28 @@ function StatsForm({ data, setData, players, isPending, onSave }: any) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function OcrUploader() {
+export default function OcrUploader({
+  initialName = "",
+  lockName = false,
+}: {
+  initialName?: string;
+  lockName?: boolean;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [mode, setMode] = useState<"scan" | "manual">("scan");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [scanData, setScanData] = useState<any>(null);
-  const [manualData, setManualData] = useState<any>({ ...EMPTY_STATS });
+  const [manualData, setManualData] = useState<any>({ ...EMPTY_STATS, name: initialName });
   const [existingPlayers, setExistingPlayers] = useState<string[]>([]);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   useEffect(() => { getPlayers().then(setExistingPlayers); }, []);
+  useEffect(() => {
+    setManualData((prev: any) => ({ ...prev, name: initialName }));
+    setScanData((prev: any) => (prev ? { ...prev, name: initialName || prev.name } : prev));
+  }, [initialName]);
 
   const handleSave = (data: any) => {
     setSaveStatus(null);
@@ -219,7 +233,7 @@ export default function OcrUploader() {
         if (result.success) {
           setSaveStatus({ type: "success", msg: `✅ ${data.name} saved successfully!` });
           setScanData(null);
-          setManualData({ ...EMPTY_STATS });
+          setManualData({ ...EMPTY_STATS, name: initialName });
           getPlayers().then(setExistingPlayers);
           router.refresh();
         } else {
@@ -247,7 +261,7 @@ export default function OcrUploader() {
       const nl = rawName.toLowerCase();
       const valid = rawName.length >= 4 && rawName.length <= 25 && !/\d/.test(rawName) &&
         !STAT_KEYWORDS.some(k => nl === k || nl.startsWith(k + " "));
-      setScanData({ ...stats, name: valid ? rawName : "" });
+      setScanData({ ...stats, name: lockName ? initialName : valid ? rawName : "" });
     } catch (err) {
       console.error(err);
       setSaveStatus({ type: "error", msg: "❌ Failed to process image. Tesseract might be busy." });
@@ -337,7 +351,7 @@ export default function OcrUploader() {
                   <CheckCircle2 size={20} />
                   <h4 style={{ margin: 0 }}>Verify Combat Data</h4>
                 </div>
-                <StatsForm data={scanData} setData={setScanData} players={existingPlayers}
+                <StatsForm data={scanData} setData={setScanData} players={existingPlayers} lockName={lockName}
                   isPending={isPending} onSave={() => handleSave(scanData)} />
               </div>
             )}
@@ -348,7 +362,7 @@ export default function OcrUploader() {
         {mode === "manual" && (
           <div className="flex-col gap-6">
             <h3 className="text-gradient-primary" style={{ margin: 0 }}>Enter Player Data</h3>
-            <StatsForm data={manualData} setData={setManualData} players={existingPlayers}
+            <StatsForm data={manualData} setData={setManualData} players={existingPlayers} lockName={lockName}
               isPending={isPending} onSave={() => handleSave(manualData)} />
           </div>
         )}

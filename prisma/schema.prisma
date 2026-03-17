@@ -14,6 +14,7 @@ model Player {
   id              String     @id @default(cuid())
   name            String     @unique
   alliance        String?    @default("BOM")
+  leaderNotes     String     @default("")
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   gloryWarStatus  String     @default("Offline")

@@ -10,9 +10,10 @@ import AllianceOverview from "@/components/AllianceOverview";
 import AllianceDuelPanel from "@/components/AllianceDuelPanel";
 import AuthPanel from "@/components/AuthPanel";
 import AdminPanel from "@/components/AdminPanel";
+import ProfilePanel from "@/components/ProfilePanel";
 import prisma from "@/utils/db";
 import { getCurrentUser, hasPermission } from "@/utils/auth";
-import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements } from "@/utils/allianceDuel";
+import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
 import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 
@@ -38,8 +39,10 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const canUploadProfile = hasPermission(currentUser, "uploadProfile");
   const canManageBugs = hasPermission(currentUser, "manageBugs");
   const canAccessAdmin = hasPermission(currentUser, "manageUsers") || hasPermission(currentUser, "manageRoles");
+  const canBrowseProfiles = canAccessAdmin || hasPermission(currentUser, "editRoster");
 
   const availableViews = [
+    "profile",
     canViewOverview ? "overview" : null,
     canViewAllianceDuel ? "duel" : null,
     canViewDashboard ? "performance" : null,
@@ -50,6 +53,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const currentView = availableViews.includes(requestedView) ? requestedView : availableViews[0] || "performance";
   const shouldLoadDuelData = currentView === "duel" && canViewAllianceDuel;
+  const profileTargetName = currentView === "profile" ? targetName || currentUser.playerName : undefined;
 
   const [allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
     getAllianceAverage(),
@@ -86,6 +90,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     rank: number | null;
   }> = [];
   let duelLoadError: string | null = null;
+  let profileData: any = null;
 
   if (shouldLoadDuelData) {
     try {
@@ -110,6 +115,96 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     }
   }
 
+  if (currentView === "profile") {
+    await ensureAllianceDuelRequirements();
+    const resolvedTargetName = canBrowseProfiles ? profileTargetName : currentUser.playerName;
+    const profilePlayer =
+      (resolvedTargetName
+        ? await prisma.player.findFirst({
+            where: { name: { equals: resolvedTargetName, mode: "insensitive" } },
+            include: {
+              snapshots: {
+                orderBy: { createdAt: "desc" },
+                take: 5,
+              },
+            },
+          })
+        : null) ??
+      (await prisma.player.findUnique({
+        where: { id: currentUser.playerId },
+        include: {
+          snapshots: {
+            orderBy: { createdAt: "desc" },
+            take: 5,
+          },
+        },
+      }));
+
+    if (profilePlayer) {
+      const currentDayIndex = new Date().getDay();
+      const currentDayKey = ALLIANCE_DUEL_DAYS[Math.max(0, Math.min(ALLIANCE_DUEL_DAYS.length - 1, currentDayIndex - 1))];
+      const [dailyRequirement, dailyScore] = await Promise.all([
+        prisma.allianceDuelRequirement.findUnique({ where: { dayKey: currentDayKey } }),
+        prisma.allianceDuelScore.findUnique({
+          where: {
+            playerId_scoreType_dayKey: {
+              playerId: profilePlayer.id,
+              scoreType: "daily",
+              dayKey: currentDayKey,
+            },
+          },
+        }),
+      ]);
+
+      const sortedByScore = [...rosterData].sort((a, b) => b.latestScore - a.latestScore);
+      const rank = sortedByScore.findIndex((player) => player.id === profilePlayer.id) + 1;
+      const latestSnapshot = profilePlayer.snapshots[0];
+      const combatPower =
+        profilePlayer.march1Power +
+        profilePlayer.march2Power +
+        profilePlayer.march3Power +
+        profilePlayer.march4Power;
+      const duelRequirement = dailyRequirement?.minimumScore ?? 0;
+      const duelScore = dailyScore?.score ?? null;
+      const duelCompliance =
+        duelScore === null ? "Missing Data" : duelScore >= duelRequirement ? "Met" : "Below Requirement";
+
+      profileData = {
+        id: profilePlayer.id,
+        name: profilePlayer.name,
+        totalPower: profilePlayer.totalPower,
+        kills: profilePlayer.kills,
+        latestScore: profilePlayer.latestScore,
+        gloryWarStatus: profilePlayer.gloryWarStatus,
+        march1Power: profilePlayer.march1Power,
+        march2Power: profilePlayer.march2Power,
+        march3Power: profilePlayer.march3Power,
+        march4Power: profilePlayer.march4Power,
+        combatPower,
+        updatedAt: profilePlayer.updatedAt.toISOString(),
+        structurePower: latestSnapshot?.structurePower ?? 0,
+        techPower: latestSnapshot?.techPower ?? 0,
+        troopPower: latestSnapshot?.troopPower ?? 0,
+        heroPower: latestSnapshot?.heroPower ?? 0,
+        modVehiclePower: latestSnapshot?.modVehiclePower ?? 0,
+        rank: rank > 0 ? rank : 1,
+        todayDuelScore: duelScore,
+        todayDuelRank: dailyScore?.rank ?? null,
+        duelRequirement,
+        duelRequirementName: dailyRequirement?.eventName ?? getAllianceDuelDayLabel(currentDayKey),
+        duelCompliance,
+        leaderNotes: profilePlayer.leaderNotes,
+        snapshots: profilePlayer.snapshots.map((snapshot) => ({
+          id: snapshot.id,
+          createdAt: snapshot.createdAt.toISOString(),
+          totalPower: snapshot.totalPower,
+          kills: snapshot.kills,
+          score: snapshot.score,
+        })),
+      };
+    }
+  }
+
   const effectiveName = selectedPlayerData?.name || currentUser.playerName || "Alliance Member";
   const allPlayerNames = allPlayers.map((player) => player.name);
 
@@ -124,6 +219,9 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         </div>
 
         <nav className="flex-row gap-2" style={{ backgroundColor: "var(--bg-input)", padding: "4px", borderRadius: "8px" }}>
+          <Link href="/?view=profile" className={`cyber-button ${currentView === "profile" ? "primary" : ""}`} style={tabLinkStyle}>
+            Profile
+          </Link>
           {canViewOverview && (
             <Link href="/?view=overview" className={`cyber-button ${currentView === "overview" ? "primary" : ""}`} style={tabLinkStyle}>
               Overview
@@ -161,8 +259,10 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         <section className={currentView === "performance" && canUploadProfile ? "col-span-8" : "col-span-12"}>
           <div className="cyber-card flex-col gap-4">
             <h2 style={{ color: "var(--accent-neon)", fontSize: "1.25rem" }}>
-              {currentView === "overview"
-                ? "ALLIANCE ANALYTICS"
+              {currentView === "profile"
+                ? "PLAYER PROFILE"
+                : currentView === "overview"
+                  ? "ALLIANCE ANALYTICS"
                 : currentView === "duel"
                   ? "ALLIANCE DUEL MAINTENANCE"
                 : currentView === "performance"
@@ -174,7 +274,21 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                       : "ADMINISTRATOR CONTROL"}
             </h2>
 
-            {currentView === "overview" ? (
+            {currentView === "profile" ? (
+              profileData ? (
+                <ProfilePanel
+                  profile={profileData}
+                  availablePlayers={allPlayerNames}
+                  canEditProfile={currentUser.playerId === profileData.id || canBrowseProfiles}
+                  canManageNotes={canBrowseProfiles}
+                  canBrowsePlayers={canBrowseProfiles}
+                />
+              ) : (
+                <div style={{ color: "var(--accent-red)", fontFamily: "var(--font-mono)" }}>
+                  Profile not found.
+                </div>
+              )
+            ) : currentView === "overview" ? (
               <AllianceOverview players={rosterData} bugs={bugData} />
             ) : currentView === "duel" ? (
               duelLoadError ? (
