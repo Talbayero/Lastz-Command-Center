@@ -330,6 +330,123 @@ export async function saveAllianceDuelManualScore(input: {
   }
 }
 
+export async function saveAllianceDuelParsedEntries(input: {
+  scoreType: string;
+  dayKey?: string;
+  entries: Array<{ name: string; score: number; rank: number | null }>;
+}) {
+  try {
+    await requirePermission("manageAllianceDuel");
+
+    if (!isValidScoreType(input.scoreType)) {
+      return { success: false, error: "Invalid duel score type." };
+    }
+
+    const scopeKey = getScoreScopeKey(input.scoreType, input.dayKey);
+    const players = await prisma.player.findMany({
+      where: { alliance: "BOM" },
+      select: { id: true, name: true },
+    });
+
+    const playersByNormalizedName = new Map(players.map((player) => [normalizePlayerName(player.name), player]));
+    const matchedEntries: Array<{ playerId: string; playerName: string; score: number; rank: number | null; detectedName: string }> = [];
+    const unmatchedEntries: Array<{ name: string; score: number; rank: number | null }> = [];
+
+    for (const rawEntry of input.entries) {
+      const entry = {
+        name: String(rawEntry.name ?? "").trim(),
+        score: normalizeScore(rawEntry.score),
+        rank: normalizeRank(rawEntry.rank),
+      };
+      const normalizedName = normalizePlayerName(entry.name);
+      if (!normalizedName || entry.score <= 0) {
+        continue;
+      }
+
+      let player = playersByNormalizedName.get(normalizedName);
+
+      if (!player) {
+        const looseMatches = players.filter((candidate) => {
+          const candidateName = normalizePlayerName(candidate.name);
+          return candidateName.includes(normalizedName) || normalizedName.includes(candidateName);
+        });
+
+        if (looseMatches.length === 1) {
+          player = looseMatches[0];
+        }
+      }
+
+      if (!player) {
+        unmatchedEntries.push(entry);
+        continue;
+      }
+
+      matchedEntries.push({
+        playerId: player.id,
+        playerName: player.name,
+        score: entry.score,
+        rank: entry.rank,
+        detectedName: entry.name,
+      });
+    }
+
+    await prisma.$transaction(
+      matchedEntries.map((entry) =>
+        prisma.allianceDuelScore.upsert({
+          where: {
+            playerId_scoreType_dayKey: {
+              playerId: entry.playerId,
+              scoreType: input.scoreType,
+              dayKey: scopeKey,
+            },
+          },
+          create: {
+            playerId: entry.playerId,
+            scoreType: input.scoreType,
+            dayKey: scopeKey,
+            score: entry.score,
+            rank: entry.rank,
+            source: "screenshot",
+          },
+          update: {
+            score: entry.score,
+            rank: entry.rank,
+            source: "screenshot",
+          },
+        })
+      )
+    );
+
+    revalidatePath("/");
+    return {
+      success: true,
+      appliedCount: matchedEntries.length,
+      unmatchedNames: unmatchedEntries.map((entry) => entry.name),
+      unmatchedEntries,
+      updatedPlayers: matchedEntries,
+      reviewEntries: [
+        ...matchedEntries.map((entry) => ({
+          detectedName: entry.detectedName,
+          matchedPlayerId: entry.playerId,
+          matchedPlayerName: entry.playerName,
+          score: entry.score,
+          rank: entry.rank,
+        })),
+        ...unmatchedEntries.map((entry) => ({
+          detectedName: entry.name,
+          matchedPlayerId: null,
+          matchedPlayerName: null,
+          score: entry.score,
+          rank: entry.rank,
+        })),
+      ],
+    };
+  } catch (error: any) {
+    console.error("ALLIANCE DUEL PARSED SAVE ERROR:", error);
+    return { success: false, error: error.message || "Failed to save parsed duel scores." };
+  }
+}
+
 export async function processAllianceDuelScreenshot(input: {
   imageBase64: string;
   mimeType: string;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Tesseract from "tesseract.js";
 import { Upload, Loader2, CheckCircle2 } from "lucide-react";
 import {
   ALLIANCE_DUEL_DAYS,
@@ -8,8 +9,8 @@ import {
   type AllianceDuelScoreType,
 } from "@/utils/allianceDuel";
 import {
-  processAllianceDuelScreenshot,
   saveAllianceDuelManualScore,
+  saveAllianceDuelParsedEntries,
   saveAllianceDuelRequirement,
 } from "@/app/actions/allianceDuel";
 
@@ -335,16 +336,16 @@ export default function AllianceDuelPanel({
       const nextReviewEntries: UploadReviewEntry[] = [];
 
       for (const file of fileList) {
-        const imageBase64 = await fileToBase64(file);
+        const optimizedBlob = await optimizeUploadImage(file);
+        const parsedEntries = await parseAllianceDuelImageLocally(optimizedBlob);
         const result = await withTimeout(
-          processAllianceDuelScreenshot({
-            imageBase64,
-            mimeType: file.type || "image/png",
+          saveAllianceDuelParsedEntries({
             scoreType: activeScoreType,
             dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
+            entries: parsedEntries,
           }),
           45000,
-          `Upload timed out on ${file.name}. Try a smaller screenshot or refresh and try again.`
+          `Saving timed out on ${file.name}. Try again in a moment.`
         );
 
         if (!result.success) {
@@ -774,23 +775,6 @@ function getReviewEntryKey(entry: UploadReviewEntry) {
   return `${entry.detectedName}::${entry.score}::${entry.rank ?? "na"}::${entry.matchedPlayerId ?? "none"}`;
 }
 
-async function fileToBase64(file: File) {
-  const optimizedBlob = await optimizeUploadImage(file);
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("Could not encode image"));
-        return;
-      }
-      resolve(result.split(",")[1] ?? "");
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
-    reader.readAsDataURL(optimizedBlob);
-  });
-}
-
 async function optimizeUploadImage(file: File): Promise<Blob> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -824,6 +808,119 @@ async function optimizeUploadImage(file: File): Promise<Blob> {
     img.onerror = () => resolve(file);
     img.src = URL.createObjectURL(file);
   });
+}
+
+async function parseAllianceDuelImageLocally(blob: Blob) {
+  const dataUrl = await blobToDataUrl(blob);
+  const result = await Tesseract.recognize(dataUrl, "eng");
+  const ocrWords = (result.data as any)?.words;
+  const words: any[] = Array.isArray(ocrWords) ? ocrWords : [];
+
+  const groupedRows = groupWordsIntoRows(
+    words
+      .map((word) => ({
+        text: String(word.text ?? "").trim(),
+        x0: Number(word.bbox?.x0 ?? 0),
+        y0: Number(word.bbox?.y0 ?? 0),
+        y1: Number(word.bbox?.y1 ?? 0),
+      }))
+      .filter((word) => word.text)
+  );
+
+  return dedupeLocalEntries(
+    groupedRows
+      .map(parseOcrRow)
+      .filter((entry): entry is { name: string; rank: number | null; score: number } => Boolean(entry && entry.name && entry.score > 0))
+  );
+}
+
+async function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Could not encode image"));
+        return;
+      }
+      resolve(result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function groupWordsIntoRows(words: Array<{ text: string; x0: number; y0: number; y1: number }>) {
+  const sorted = words.slice().sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const rows: Array<Array<{ text: string; x0: number; y0: number; y1: number }>> = [];
+
+  for (const word of sorted) {
+    const targetRow = rows.find((row) => {
+      const rowCenter = average(row.map((entry) => (entry.y0 + entry.y1) / 2));
+      const wordCenter = (word.y0 + word.y1) / 2;
+      return Math.abs(rowCenter - wordCenter) <= 24;
+    });
+
+    if (targetRow) {
+      targetRow.push(word);
+    } else {
+      rows.push([word]);
+    }
+  }
+
+  return rows.map((row) => row.sort((a, b) => a.x0 - b.x0));
+}
+
+function parseOcrRow(row: Array<{ text: string; x0: number; y0: number; y1: number }>) {
+  const scoreToken = [...row]
+    .reverse()
+    .find((entry) => /\d[\d,._]{4,}/.test(entry.text) || /^\d{5,}$/.test(entry.text.replace(/[^\d]/g, "")));
+  const score = normalizeLocalScore(scoreToken?.text ?? "");
+  if (score <= 0) return null;
+
+  const rankToken = row.find((entry) => /^\d{1,3}$/.test(entry.text.replace(/[^\d]/g, "")));
+  const rank = normalizeLocalRank(rankToken?.text ?? "");
+
+  const filteredNameParts = row
+    .filter((entry) => {
+      const text = entry.text;
+      const digits = text.replace(/[^\d]/g, "");
+      if (digits.length >= 4) return false;
+      if (/^\[.*\]$/.test(text)) return false;
+      if (/rank|ranking|daily|weekly|alliance|misfits|band/i.test(text)) return false;
+      return /[a-zA-Z]/.test(text);
+    })
+    .map((entry) => entry.text.replace(/[^a-zA-Z0-9]/g, ""))
+    .filter(Boolean);
+
+  const name = filteredNameParts.join(" ").trim();
+  if (!name || name.length < 3) return null;
+
+  return { name, rank, score };
+}
+
+function dedupeLocalEntries(entries: Array<{ name: string; rank: number | null; score: number }>) {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = `${entry.name.toLowerCase().replace(/[^a-z0-9]/g, "")}::${entry.score}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeLocalScore(value: unknown) {
+  const digitsOnly = String(value ?? "").replace(/[^\d]/g, "");
+  return digitsOnly ? Number(digitsOnly) : 0;
+}
+
+function normalizeLocalRank(value: unknown) {
+  const digitsOnly = String(value ?? "").replace(/[^\d]/g, "");
+  return digitsOnly ? Number(digitsOnly) : null;
+}
+
+function average(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
 }
 
 const scopeTabContainerStyle: React.CSSProperties = {
