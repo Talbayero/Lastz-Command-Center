@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 const STORAGE_KEY = "lastz-scoring-weights";
 
 const INITIAL_WEIGHTS = {
-  kills: 30,
+  combatPower: 30,
   tech: 25,
   hero: 20,
   troop: 15,
@@ -27,10 +27,18 @@ export default function ScoringEngine() {
       }
 
       const parsed = JSON.parse(stored);
-      const hasAllKeys = Object.keys(INITIAL_WEIGHTS).every((key) => typeof parsed?.[key] === "number");
+      const normalized = {
+        combatPower: typeof parsed?.combatPower === "number" ? parsed.combatPower : Number(parsed?.kills ?? INITIAL_WEIGHTS.combatPower),
+        tech: Number(parsed?.tech ?? INITIAL_WEIGHTS.tech),
+        hero: Number(parsed?.hero ?? INITIAL_WEIGHTS.hero),
+        troop: Number(parsed?.troop ?? INITIAL_WEIGHTS.troop),
+        modVehicle: Number(parsed?.modVehicle ?? INITIAL_WEIGHTS.modVehicle),
+        structure: Number(parsed?.structure ?? INITIAL_WEIGHTS.structure),
+      };
+      const hasAllKeys = Object.keys(INITIAL_WEIGHTS).every((key) => typeof normalized[key as keyof typeof INITIAL_WEIGHTS] === "number");
 
       if (hasAllKeys) {
-        setWeights(parsed);
+        setWeights(normalized);
         setSavedMessage("Restored last saved configuration");
       }
     } catch {
@@ -53,7 +61,7 @@ export default function ScoringEngine() {
     setWeights(prev => ({ ...prev, [key]: cappedValue }));
   };
 
-  const formula = `Score = (Kills x ${weights.kills}%) + (Tech x ${weights.tech}%) + (Hero x ${weights.hero}%) + (Troop x ${weights.troop}%) + (Mod Vehicle x ${weights.modVehicle}%) + (Structure x ${weights.structure}%)`;
+  const formula = `Score = (Combat Power x ${weights.combatPower}%) + (Tech x ${weights.tech}%) + (Hero x ${weights.hero}%) + (Troop x ${weights.troop}%) + (Mod Vehicle x ${weights.modVehicle}%) + (Structure x ${weights.structure}%)`;
 
   const saveWeights = () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(weights));
@@ -88,15 +96,15 @@ export default function ScoringEngine() {
 
       <div className="flex-col gap-2">
         <div className="flex-row justify-between">
-          <label className="cyber-label">Kills Weight</label>
-          <span style={{ color: 'var(--accent-neon)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{weights.kills}%</span>
+          <label className="cyber-label">Combat Power Weight</label>
+          <span style={{ color: 'var(--accent-neon)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{weights.combatPower}%</span>
         </div>
         <input 
           type="range" 
           className="w-full" 
-          value={weights.kills} 
+          value={weights.combatPower} 
           min="0" max="100"
-          onChange={(e) => handleWeightChange('kills', parseInt(e.target.value))}
+          onChange={(e) => handleWeightChange('combatPower', parseInt(e.target.value))}
         />
       </div>
 
