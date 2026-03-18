@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
-import { LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
 import { parseLastZProfile } from "@/utils/ocrParser";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 import {
@@ -65,6 +65,16 @@ type SharedDraft = {
   kills: number;
   notes: string;
   manualAdjustment: number;
+};
+
+type ScoreWeights = {
+  troop: number;
+  combat: number;
+  hero: number;
+  tech: number;
+  kills: number;
+  structure: number;
+  modVehicle: number;
 };
 
 const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"];
@@ -131,30 +141,36 @@ const emptyMigrationDraft = {
   status: "Scouted",
 };
 
-function applicantScore(entry: SharedDraft) {
-  return Number(
-    (
-      (entry.troopPower / 1_000_000) * 0.4 +
-      (entry.combatPower / 1_000_000) * 0.2 +
-      (entry.heroPower / 1_000_000) * 0.15 +
-      (entry.techPower / 1_000_000) * 0.1 +
-      (entry.kills / 1_000_000) * 0.1 +
-      (entry.structurePower / 1_000_000) * 0.05 +
-      entry.manualAdjustment
-    ).toFixed(2)
-  );
-}
+const defaultApplicantWeights: ScoreWeights = {
+  troop: 0.4,
+  combat: 0.2,
+  hero: 0.15,
+  tech: 0.1,
+  kills: 0.1,
+  structure: 0.05,
+  modVehicle: 0,
+};
 
-function migrationScore(entry: SharedDraft) {
+const defaultMigrationWeights: ScoreWeights = {
+  troop: 0.3,
+  combat: 0.25,
+  hero: 0.15,
+  tech: 0.1,
+  kills: 0.1,
+  structure: 0.05,
+  modVehicle: 0.05,
+};
+
+function computeScore(entry: SharedDraft, weights: ScoreWeights) {
   return Number(
     (
-      (entry.troopPower / 1_000_000) * 0.3 +
-      (entry.combatPower / 1_000_000) * 0.25 +
-      (entry.heroPower / 1_000_000) * 0.15 +
-      (entry.techPower / 1_000_000) * 0.1 +
-      (entry.kills / 1_000_000) * 0.1 +
-      (entry.modVehiclePower / 1_000_000) * 0.05 +
-      (entry.structurePower / 1_000_000) * 0.05 +
+      (entry.troopPower / 1_000_000) * weights.troop +
+      (entry.combatPower / 1_000_000) * weights.combat +
+      (entry.heroPower / 1_000_000) * weights.hero +
+      (entry.techPower / 1_000_000) * weights.tech +
+      (entry.kills / 1_000_000) * weights.kills +
+      (entry.structurePower / 1_000_000) * weights.structure +
+      (entry.modVehiclePower / 1_000_000) * weights.modVehicle +
       entry.manualAdjustment
     ).toFixed(2)
   );
@@ -263,12 +279,36 @@ export default function RecruitmentPanel({
   const [applicantEditId, setApplicantEditId] = useState<string | null>(null);
   const [migrationEditId, setMigrationEditId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [applicantWeights, setApplicantWeights] = useState<ScoreWeights>(defaultApplicantWeights);
+  const [migrationWeights, setMigrationWeights] = useState<ScoreWeights>(defaultMigrationWeights);
+  const [expandedRowIds, setExpandedRowIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const applicantSaved = window.localStorage.getItem("recruitmentApplicantWeights");
+      const migrationSaved = window.localStorage.getItem("recruitmentMigrationWeights");
+      if (applicantSaved) {
+        setApplicantWeights({ ...defaultApplicantWeights, ...JSON.parse(applicantSaved) });
+      }
+      if (migrationSaved) {
+        setMigrationWeights({ ...defaultMigrationWeights, ...JSON.parse(migrationSaved) });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("recruitmentApplicantWeights", JSON.stringify(applicantWeights));
+  }, [applicantWeights]);
+
+  useEffect(() => {
+    window.localStorage.setItem("recruitmentMigrationWeights", JSON.stringify(migrationWeights));
+  }, [migrationWeights]);
 
   const applicantRows = useMemo(
     () =>
       applicants
         .map((entry) => {
-          const score = applicantScore(entry);
+          const score = computeScore(entry, applicantWeights);
           return {
             ...entry,
             score,
@@ -277,13 +317,13 @@ export default function RecruitmentPanel({
           };
         })
         .sort((a, b) => b.score - a.score),
-    [applicants]
+    [applicants, applicantWeights]
   );
   const migrationRows = useMemo(
     () =>
       migrations
         .map((entry) => {
-          const score = migrationScore(entry);
+          const score = computeScore(entry, migrationWeights);
           return {
             ...entry,
             score,
@@ -292,7 +332,7 @@ export default function RecruitmentPanel({
           };
         })
         .sort((a, b) => b.score - a.score),
-    [migrations]
+    [migrations, migrationWeights]
   );
 
   const currentRows = tab === "applicants" ? applicantRows : migrationRows;
@@ -314,8 +354,8 @@ export default function RecruitmentPanel({
 
   const currentFormula =
     tab === "applicants"
-      ? "Applicant Score = Troop x 0.40 + Combat x 0.20 + Hero x 0.15 + Tech x 0.10 + Kills x 0.10 + Structure x 0.05 + Manual Adjustment"
-      : "Migration Score = Troop x 0.30 + Combat x 0.25 + Hero x 0.15 + Tech x 0.10 + Kills x 0.10 + Mod Vehicle x 0.05 + Structure x 0.05 + Manual Adjustment";
+      ? formulaLabel("Applicant", applicantWeights)
+      : formulaLabel("Migration", migrationWeights);
 
   const handleScreenshot = async (file: File) => {
     setIsScanning(true);
@@ -340,10 +380,10 @@ export default function RecruitmentPanel({
       };
 
       if (tab === "applicants") {
-        const nextScore = applicantScore(nextShared);
+        const nextScore = computeScore(nextShared, applicantWeights);
         setApplicantDraft((prev) => ({ ...prev, ...nextShared, category: categoryFromScore(nextScore) }));
       } else {
-        const nextScore = migrationScore(nextShared);
+        const nextScore = computeScore(nextShared, migrationWeights);
         setMigrationDraft((prev) => ({ ...prev, ...nextShared, category: categoryFromScore(nextScore) }));
       }
 
@@ -502,6 +542,28 @@ export default function RecruitmentPanel({
         </div>
       </div>
 
+      {canManage && (
+        <section className="cyber-card flex-col gap-4">
+          <h3 style={{ color: "var(--accent-neon)" }}>
+            {tab === "applicants" ? "Applicant Scoring Engine" : "Migration Scoring Engine"}
+          </h3>
+          <div style={{ color: "var(--text-muted)", fontSize: "0.86rem" }}>
+            Adjust the score weights for this tab. Changes are saved in this browser so you can tune the formula live.
+          </div>
+          <div style={miniStatsGridStyle}>
+            <WeightField label="Troop" value={(tab === "applicants" ? applicantWeights : migrationWeights).troop} onChange={(value) => updateWeights(tab, "troop", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Combat" value={(tab === "applicants" ? applicantWeights : migrationWeights).combat} onChange={(value) => updateWeights(tab, "combat", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Hero" value={(tab === "applicants" ? applicantWeights : migrationWeights).hero} onChange={(value) => updateWeights(tab, "hero", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Tech" value={(tab === "applicants" ? applicantWeights : migrationWeights).tech} onChange={(value) => updateWeights(tab, "tech", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => updateWeights(tab, "kills", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => updateWeights(tab, "structure", value, setApplicantWeights, setMigrationWeights)} />
+            {tab === "migrations" && (
+              <WeightField label="Mod Vehicle" value={migrationWeights.modVehicle} onChange={(value) => updateWeights("migrations", "modVehicle", value, setApplicantWeights, setMigrationWeights)} />
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="cyber-card flex-col gap-4">
         <h3 style={{ color: "var(--accent-purple)" }}>
           {tab === "applicants" ? "Applicant Summary" : "Migration Summary"}
@@ -575,7 +637,7 @@ export default function RecruitmentPanel({
             )}
             <div className="flex-row justify-between gap-3" style={{ flexWrap: "wrap" }}>
               <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
-                Current score: {tab === "applicants" ? applicantScore(applicantDraft).toFixed(2) : migrationScore(migrationDraft).toFixed(2)}
+                Current score: {tab === "applicants" ? computeScore(applicantDraft, applicantWeights).toFixed(2) : computeScore(migrationDraft, migrationWeights).toFixed(2)}
               </div>
               <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
                 <button
@@ -607,20 +669,16 @@ export default function RecruitmentPanel({
             {tab === "applicants" ? "Applicant Ranking" : "Migration Candidate Ranking"}
           </h3>
           <div className="responsive-table" style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: tab === "applicants" ? "1080px" : "1280px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead style={{ backgroundColor: "var(--bg-dark)" }}>
                 <tr>
-                  <HeaderCell>Rank</HeaderCell>
+                  <HeaderCell>Open</HeaderCell>
                   <HeaderCell>Name</HeaderCell>
                   {tab === "migrations" && <HeaderCell>Original Server</HeaderCell>}
                   {tab === "migrations" && <HeaderCell>Original Alliance</HeaderCell>}
                   {tab === "applicants" && <HeaderCell>Timezone</HeaderCell>}
                   <HeaderCell>Category</HeaderCell>
                   <HeaderCell>Status</HeaderCell>
-                  {tab === "migrations" && <HeaderCell>Contact</HeaderCell>}
-                  <HeaderCell>Troop</HeaderCell>
-                  <HeaderCell>Combat</HeaderCell>
-                  <HeaderCell>Kills</HeaderCell>
                   <HeaderCell>Score</HeaderCell>
                   <HeaderCell>Fit</HeaderCell>
                   <HeaderCell>Updated</HeaderCell>
@@ -629,34 +687,73 @@ export default function RecruitmentPanel({
               </thead>
               <tbody>
                 {currentRows.map((row, index) => (
-                  <tr key={row.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                    <BodyCell>#{index + 1}</BodyCell>
-                    <BodyCell strong>{row.name}</BodyCell>
-                    {tab === "migrations" && <BodyCell>{(row as any).originalServer}</BodyCell>}
-                    {tab === "migrations" && <BodyCell>{(row as any).originalAlliance}</BodyCell>}
-                    {tab === "applicants" && <BodyCell>{(row as any).timezone || "-"}</BodyCell>}
-                    <BodyCell><span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span></BodyCell>
-                    <BodyCell>{row.status}</BodyCell>
-                    {tab === "migrations" && <BodyCell>{(row as any).contactStatus}</BodyCell>}
-                    <BodyCell>{row.troopPower.toLocaleString()}</BodyCell>
-                    <BodyCell>{row.combatPower.toLocaleString()}</BodyCell>
-                    <BodyCell>{row.kills.toLocaleString()}</BodyCell>
-                    <BodyCell>{row.score.toFixed(2)}</BodyCell>
-                    <BodyCell><span style={badgeStyle((row as any).recommendation)}>{(row as any).recommendation}</span></BodyCell>
-                    <BodyCell>{formatDate(row.updatedAt)}</BodyCell>
-                    {canManage && (
+                  <Fragment key={row.id}>
+                    <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                       <BodyCell>
-                        <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
-                          <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))} aria-label="Edit record">
-                            <Pencil size={14} />
-                          </button>
-                          <button className="cyber-button" style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }} onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}>
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                        <button
+                          className="cyber-button"
+                          style={{ padding: "0.35rem 0.55rem" }}
+                          onClick={() =>
+                            setExpandedRowIds((prev) =>
+                              prev.includes(row.id) ? prev.filter((id) => id !== row.id) : [...prev, row.id]
+                            )
+                          }
+                          aria-label="Toggle details"
+                        >
+                          {expandedRowIds.includes(row.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
                       </BodyCell>
+                      <BodyCell strong>{`${index + 1}. ${row.name}`}</BodyCell>
+                      {tab === "migrations" && <BodyCell>{(row as any).originalServer}</BodyCell>}
+                      {tab === "migrations" && <BodyCell>{(row as any).originalAlliance}</BodyCell>}
+                      {tab === "applicants" && <BodyCell>{(row as any).timezone || "-"}</BodyCell>}
+                      <BodyCell><span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span></BodyCell>
+                      <BodyCell>{row.status}</BodyCell>
+                      <BodyCell>{row.score.toFixed(2)}</BodyCell>
+                      <BodyCell><span style={badgeStyle((row as any).recommendation)}>{(row as any).recommendation}</span></BodyCell>
+                      <BodyCell>{formatDate(row.updatedAt)}</BodyCell>
+                      {canManage && (
+                        <BodyCell>
+                          <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
+                            <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))} aria-label="Edit record">
+                              <Pencil size={14} />
+                            </button>
+                            <button className="cyber-button" style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }} onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </BodyCell>
+                      )}
+                    </tr>
+                    {expandedRowIds.includes(row.id) && (
+                      <tr style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "rgba(255,255,255,0.02)" }}>
+                        <td colSpan={tab === "migrations" ? (canManage ? 10 : 9) : canManage ? 9 : 8} style={{ padding: "1rem" }}>
+                          <div style={miniStatsGridStyle}>
+                            {tab === "migrations" && <MiniMetric label="Contact" value={(row as any).contactStatus} />}
+                            <MiniMetric label="Troop" value={row.troopPower.toLocaleString()} />
+                            <MiniMetric label="Combat" value={row.combatPower.toLocaleString()} />
+                            <MiniMetric label="Kills" value={row.kills.toLocaleString()} />
+                            <MiniMetric label="Hero" value={row.heroPower.toLocaleString()} />
+                            <MiniMetric label="Tech" value={row.techPower.toLocaleString()} />
+                            <MiniMetric label="Mod Vehicle" value={row.modVehiclePower.toLocaleString()} />
+                            <MiniMetric label="Structure" value={row.structurePower.toLocaleString()} />
+                          </div>
+                          {tab === "migrations" && ((row as any).reasonForLeaving || (row as any).notes) && (
+                            <div style={{ marginTop: "0.9rem", color: "var(--text-muted)", fontSize: "0.84rem" }}>
+                              {(row as any).reasonForLeaving ? `Reason: ${(row as any).reasonForLeaving}` : ""}
+                              {(row as any).reasonForLeaving && (row as any).notes ? " | " : ""}
+                              {(row as any).notes ? `Notes: ${(row as any).notes}` : ""}
+                            </div>
+                          )}
+                          {tab === "applicants" && row.notes && (
+                            <div style={{ marginTop: "0.9rem", color: "var(--text-muted)", fontSize: "0.84rem" }}>
+                              Notes: {row.notes}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
                     )}
-                  </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -821,6 +918,60 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+function WeightField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px", padding: "0.75rem", border: "1px solid var(--border-subtle)" }}>
+      <div style={summaryLabelStyle}>{label} Weight</div>
+      <input
+        className="cyber-input"
+        type="number"
+        step="0.01"
+        min="0"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        style={{ marginTop: "0.45rem" }}
+      />
+    </div>
+  );
+}
+
+function formulaLabel(label: string, weights: ScoreWeights) {
+  const parts = [
+    `Troop x ${weights.troop.toFixed(2)}`,
+    `Combat x ${weights.combat.toFixed(2)}`,
+    `Hero x ${weights.hero.toFixed(2)}`,
+    `Tech x ${weights.tech.toFixed(2)}`,
+    `Kills x ${weights.kills.toFixed(2)}`,
+    weights.modVehicle > 0 ? `Mod Vehicle x ${weights.modVehicle.toFixed(2)}` : null,
+    `Structure x ${weights.structure.toFixed(2)}`,
+    "Manual Adjustment",
+  ].filter(Boolean);
+  return `${label} Score = ${parts.join(" + ")}`;
+}
+
+function updateWeights(
+  tab: "applicants" | "migrations",
+  key: keyof ScoreWeights,
+  value: number,
+  setApplicantWeights: Dispatch<SetStateAction<ScoreWeights>>,
+  setMigrationWeights: Dispatch<SetStateAction<ScoreWeights>>
+) {
+  if (tab === "applicants") {
+    setApplicantWeights((prev) => ({ ...prev, [key]: value }));
+  } else {
+    setMigrationWeights((prev) => ({ ...prev, [key]: value }));
+  }
+}
+
 
 const messageStyle = (type: "success" | "error"): React.CSSProperties => ({
   padding: "0.85rem 1rem",
