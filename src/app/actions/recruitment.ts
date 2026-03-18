@@ -92,20 +92,6 @@ function migrationScore(input: RecruitmentStatInput) {
   );
 }
 
-export function getApplicantFormulaLabel() {
-  return "Score = Troop x 0.40 + Combat x 0.20 + Hero x 0.15 + Tech x 0.10 + Kills x 0.10 + Structure x 0.05 + Manual Adjustment";
-}
-
-export function getMigrationFormulaLabel() {
-  return "Score = Troop x 0.30 + Combat x 0.25 + Hero x 0.15 + Tech x 0.10 + Kills x 0.10 + Mod Vehicle x 0.05 + Structure x 0.05 + Manual Adjustment";
-}
-
-export function getRecommendationBand(score: number) {
-  if (score >= 90) return "Strong Fit";
-  if (score >= 55) return "Borderline";
-  return "Low Priority";
-}
-
 export async function saveApplicant(input: ApplicantInput) {
   try {
     await requirePermission("manageRecruitment");
@@ -225,22 +211,4 @@ export async function deleteMigrationCandidate(input: { id: string }) {
     console.error("DELETE MIGRATION CANDIDATE ERROR:", error);
     return { success: false, error: error.message || "Failed to delete migration candidate." };
   }
-}
-
-export function enrichApplicantRecord<T extends ApplicantInput & { id: string; createdAt?: Date; updatedAt?: Date }>(entry: T) {
-  const score = applicantScore(entry);
-  return {
-    ...entry,
-    score,
-    recommendation: getRecommendationBand(score),
-  };
-}
-
-export function enrichMigrationRecord<T extends MigrationCandidateInput & { id: string; createdAt?: Date; updatedAt?: Date }>(entry: T) {
-  const score = migrationScore(entry);
-  return {
-    ...entry,
-    score,
-    recommendation: getRecommendationBand(score),
-  };
 }
