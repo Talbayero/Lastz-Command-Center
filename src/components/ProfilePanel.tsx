@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { AlertTriangle, Bot, Sparkles } from "lucide-react";
 import OcrUploader from "@/components/OcrUploader";
 import { saveProfileData, saveProfileLeaderNotes } from "@/app/actions/profile";
@@ -139,11 +140,11 @@ export default function ProfilePanel({
     ]
       .map((entry) => ({
         ...entry,
+        rawGap: Math.round(entry.average - entry.current),
         gap: Math.max(0, Math.round(entry.average - entry.current)),
         percentBehind: entry.average > 0 ? ((entry.average - entry.current) / entry.average) * 100 : 0,
       }))
-      .filter((entry) => entry.gap > 0)
-      .sort((a, b) => b.gap - a.gap);
+      .sort((a, b) => b.rawGap - a.rawGap);
 
     return recommendationPool.slice(0, 3);
   }, [
@@ -233,33 +234,6 @@ export default function ProfilePanel({
             </div>
           )}
 
-          <div style={recommendationCardStyle}>
-            <div style={{ ...miniLabelStyle, color: "var(--accent-neon)" }}>Recommended Focus</div>
-            {improvementRecommendations.length === 0 ? (
-              <div style={{ marginTop: "0.55rem", color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                You are at or above the current alliance average on all tracked stats.
-              </div>
-            ) : (
-              <div className="flex-col gap-3" style={{ marginTop: "0.8rem" }}>
-                {improvementRecommendations.map((entry) => (
-                  <div key={entry.label} style={recommendationRowStyle}>
-                    <div className="flex-col gap-2">
-                      <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{entry.label}</div>
-                      <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{entry.suggestion}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ color: "var(--accent-purple)", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-                        {entry.gap.toLocaleString()} behind
-                      </div>
-                      <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                        {Math.max(0, Math.round(entry.percentBehind))}% under alliance avg
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </section>
 
         <section className="cyber-card flex-col gap-4">
@@ -338,8 +312,16 @@ export default function ProfilePanel({
               <div className="mith-avatar-wrap" style={mithAvatarWrapStyle}>
                 <div style={mithAvatarGlowStyle} />
                 <div className="mith-avatar-core" style={mithAvatarStyle}>
-                  <Bot size={22} />
-                  <span style={{ fontSize: "0.72rem", letterSpacing: "0.12em" }}>MITH</span>
+                  <div style={mithImageFrameStyle}>
+                    <Image
+                      src="/mith-avatar-placeholder.svg"
+                      alt="Mith hologram avatar"
+                      fill
+                      sizes="72px"
+                      style={{ objectFit: "cover" }}
+                    />
+                  </div>
+                  <span style={{ fontSize: "0.68rem", letterSpacing: "0.12em" }}>MITH</span>
                 </div>
               </div>
             </div>
@@ -369,9 +351,13 @@ export default function ProfilePanel({
                       <div style={mithTipIndexStyle}>0{index + 1}</div>
                       <div className="flex-col gap-1">
                         <div style={{ color: "var(--text-main)", fontWeight: 700 }}>{entry.label}</div>
-                        <div style={{ color: "var(--text-muted)", fontSize: "0.84rem" }}>{entry.suggestion}</div>
-                        <div style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
-                          Gap: {entry.gap.toLocaleString()} ({Math.max(0, Math.round(entry.percentBehind))}% below average)
+                        <div style={{ color: "var(--text-muted)", fontSize: "0.84rem" }}>
+                          {entry.gap > 0 ? entry.suggestion : `You are already on pace here. Keep ${entry.label.toLowerCase()} stable while you push your weaker areas.`}
+                        </div>
+                        <div style={{ color: entry.gap > 0 ? "var(--accent-neon)" : "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
+                          {entry.gap > 0
+                            ? `Gap: ${entry.gap.toLocaleString()} (${Math.max(0, Math.round(entry.percentBehind))}% below average)`
+                            : "At or above alliance average"}
                         </div>
                       </div>
                     </div>
@@ -469,23 +455,6 @@ const messageStyle = (type: "success" | "error"): React.CSSProperties => ({
   fontSize: "0.85rem",
 });
 
-const recommendationCardStyle: React.CSSProperties = {
-  backgroundColor: "var(--bg-input)",
-  border: "1px solid var(--border-subtle)",
-  borderRadius: "6px",
-  padding: "1rem",
-};
-
-const recommendationRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "1rem",
-  flexWrap: "wrap",
-  paddingBottom: "0.85rem",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
-};
-
 const mithAvatarWrapStyle: React.CSSProperties = {
   position: "relative",
   width: "90px",
@@ -521,6 +490,16 @@ const mithAvatarStyle: React.CSSProperties = {
   color: "var(--accent-neon)",
   fontFamily: "var(--font-mono)",
   textTransform: "uppercase",
+};
+
+const mithImageFrameStyle: React.CSSProperties = {
+  position: "relative",
+  width: "46px",
+  height: "46px",
+  borderRadius: "50%",
+  overflow: "hidden",
+  border: "1px solid rgba(0,255,204,0.5)",
+  background: "radial-gradient(circle, rgba(0,255,204,0.18) 0%, rgba(176,38,255,0.12) 100%)",
 };
 
 const mithOverlayStyle: React.CSSProperties = {
