@@ -176,6 +176,18 @@ function computeScore(entry: SharedDraft, weights: ScoreWeights) {
   );
 }
 
+function totalWeight(weights: ScoreWeights) {
+  return (
+    weights.troop +
+    weights.combat +
+    weights.hero +
+    weights.tech +
+    weights.kills +
+    weights.structure +
+    weights.modVehicle
+  );
+}
+
 function recommendation(score: number) {
   if (score >= 90) return "Strong Fit";
   if (score >= 55) return "Borderline";
@@ -561,6 +573,22 @@ export default function RecruitmentPanel({
               <WeightField label="Mod Vehicle" value={migrationWeights.modVehicle} onChange={(value) => updateWeights("migrations", "modVehicle", value, setApplicantWeights, setMigrationWeights)} />
             )}
           </div>
+          <div
+            style={{
+              borderRadius: "6px",
+              padding: "0.8rem 1rem",
+              border: `1px solid ${Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001 ? "var(--accent-neon)" : "var(--accent-purple)"}`,
+              backgroundColor: Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001 ? "rgba(0,255,157,0.08)" : "rgba(153,0,255,0.08)",
+              color: Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001 ? "var(--accent-neon)" : "var(--accent-purple)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.84rem",
+            }}
+          >
+            Total Weight: {(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) * 100).toFixed(0)}%
+            {Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001
+              ? " (Optimized)"
+              : " (Target: 100%)"}
+          </div>
         </section>
       )}
 
@@ -934,12 +962,16 @@ function WeightField({
       <input
         className="cyber-input"
         type="number"
-        step="0.01"
+        step="1"
         min="0"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        max="100"
+        value={Math.round(value * 100)}
+        onChange={(e) => onChange((Number(e.target.value) || 0) / 100)}
         style={{ marginTop: "0.45rem" }}
       />
+      <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginTop: "0.35rem" }}>
+        {Math.round(value * 100)}%
+      </div>
     </div>
   );
 }
@@ -966,9 +998,15 @@ function updateWeights(
   setMigrationWeights: Dispatch<SetStateAction<ScoreWeights>>
 ) {
   if (tab === "applicants") {
-    setApplicantWeights((prev) => ({ ...prev, [key]: value }));
+    setApplicantWeights((prev) => {
+      const next = { ...prev, [key]: value };
+      return totalWeight(next) > 1 ? prev : next;
+    });
   } else {
-    setMigrationWeights((prev) => ({ ...prev, [key]: value }));
+    setMigrationWeights((prev) => {
+      const next = { ...prev, [key]: value };
+      return totalWeight(next) > 1 ? prev : next;
+    });
   }
 }
 
