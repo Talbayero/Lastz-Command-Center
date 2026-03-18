@@ -166,7 +166,7 @@ const emptySharedDraft: SharedDraft = {
 const emptyApplicantDraft = {
   ...emptySharedDraft,
   timezone: "UTC-6",
-  category: "Regular",
+  category: "",
   status: "New",
 };
 
@@ -449,7 +449,7 @@ export default function RecruitmentPanel({
             ...entry,
             score,
             recommendation: recommendation(score),
-            effectiveCategory: entry.category || categoryFromScore(score),
+            effectiveCategory: "",
             hasWarning: hasMissingStats(entry),
           };
         })
@@ -477,18 +477,20 @@ export default function RecruitmentPanel({
 
   const summaryRows = useMemo(() => {
     const rows = currentRows;
-    const byCategory = recruitmentCategories.map((category) => ({
-      category,
-      count: rows.filter((row: any) => row.effectiveCategory === category).length,
-    }));
     return {
       total: rows.length,
       strongFit: rows.filter((row: any) => row.recommendation === "Strong Fit").length,
       borderline: rows.filter((row: any) => row.recommendation === "Borderline").length,
       lowPriority: rows.filter((row: any) => row.recommendation === "Low Priority").length,
-      byCategory,
+      byCategory:
+        tab === "migrations"
+          ? recruitmentCategories.map((category) => ({
+              category,
+              count: rows.filter((row: any) => row.effectiveCategory === category).length,
+            }))
+          : [],
     };
-  }, [currentRows]);
+  }, [currentRows, tab]);
 
   const currentFormula =
     tab === "applicants"
@@ -522,8 +524,7 @@ export default function RecruitmentPanel({
       };
 
       if (tab === "applicants") {
-        const nextScore = computeScore(nextShared, applicantWeights);
-        setApplicantDraft((prev) => ({ ...prev, ...nextShared, category: categoryFromScore(nextScore) }));
+        setApplicantDraft((prev) => ({ ...prev, ...nextShared, category: "" }));
       } else {
         const nextScore = computeScore(nextShared, migrationWeights);
         setMigrationDraft((prev) => ({ ...prev, ...nextShared, category: categoryFromScore(nextScore) }));
@@ -762,24 +763,26 @@ export default function RecruitmentPanel({
           <MiniMetric label="Borderline" value={String(summaryRows.borderline)} />
           <MiniMetric label="Low Priority" value={String(summaryRows.lowPriority)} />
         </div>
-        <div className="responsive-table" style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "360px" }}>
-            <thead style={{ backgroundColor: "var(--bg-dark)" }}>
-              <tr>
-                <HeaderCell>Category</HeaderCell>
-                <HeaderCell>Count</HeaderCell>
-              </tr>
-            </thead>
-            <tbody>
-              {summaryRows.byCategory.map((row) => (
-                <tr key={row.category} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                  <BodyCell><span style={categoryBadgeStyle(row.category)}>{row.category}</span></BodyCell>
-                  <BodyCell>{String(row.count)}</BodyCell>
+        {tab === "migrations" && (
+          <div className="responsive-table" style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "360px" }}>
+              <thead style={{ backgroundColor: "var(--bg-dark)" }}>
+                <tr>
+                  <HeaderCell>Category</HeaderCell>
+                  <HeaderCell>Count</HeaderCell>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {summaryRows.byCategory.map((row) => (
+                  <tr key={row.category} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                    <BodyCell><span style={categoryBadgeStyle(row.category)}>{row.category}</span></BodyCell>
+                    <BodyCell>{String(row.count)}</BodyCell>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {canManage && (
@@ -902,13 +905,15 @@ export default function RecruitmentPanel({
                       Timezone
                     </SortableHeaderCell>
                   )}
-                  <SortableHeaderCell
-                    active={tab === "applicants" ? applicantSort.key === "category" : migrationSort.key === "category"}
-                    direction={tab === "applicants" && applicantSort.key === "category" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "category" ? migrationSort.direction : null}
-                    onClick={() => toggleSort("category")}
-                  >
-                    Category
-                  </SortableHeaderCell>
+                  {tab === "migrations" && (
+                    <SortableHeaderCell
+                      active={migrationSort.key === "category"}
+                      direction={migrationSort.key === "category" ? migrationSort.direction : null}
+                      onClick={() => toggleSort("category")}
+                    >
+                      Category
+                    </SortableHeaderCell>
+                  )}
                   <SortableHeaderCell
                     active={tab === "applicants" ? applicantSort.key === "status" : migrationSort.key === "status"}
                     direction={tab === "applicants" && applicantSort.key === "status" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "status" ? migrationSort.direction : null}
@@ -971,7 +976,7 @@ export default function RecruitmentPanel({
                       {tab === "migrations" && <BodyCell>{(row as any).originalServer}</BodyCell>}
                       {tab === "migrations" && <BodyCell>{(row as any).originalAlliance}</BodyCell>}
                       {tab === "applicants" && <BodyCell>{(row as any).timezone || "-"}</BodyCell>}
-                      <BodyCell><span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span></BodyCell>
+                      {tab === "migrations" && <BodyCell><span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span></BodyCell>}
                       <BodyCell>{row.status}</BodyCell>
                       <BodyCell>{row.score.toFixed(2)}</BodyCell>
                       <BodyCell><span style={badgeStyle((row as any).recommendation)}>{(row as any).recommendation}</span></BodyCell>
@@ -1045,9 +1050,11 @@ export default function RecruitmentPanel({
                   : `Server ${(row as any).originalServer || "-"} | ${(row as any).originalAlliance || "-"}` 
                 }
               </div>
-              <div>
-                <span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span>
-              </div>
+              {tab === "migrations" && (
+                <div>
+                  <span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span>
+                </div>
+              )}
               <div style={miniStatsGridStyle}>
                 <MiniMetric label="Status" value={row.status} />
                 {tab === "migrations" && <MiniMetric label="Contact" value={(row as any).contactStatus} />}
@@ -1086,11 +1093,6 @@ function ApplicantForm({ draft, setDraft }: any) {
               {timezone}
             </option>
           ))}
-        </select>
-      </LabeledField>
-      <LabeledField label="Category">
-        <select className="cyber-input" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
-          {recruitmentCategories.map((category) => <option key={category} value={category}>{category}</option>)}
         </select>
       </LabeledField>
       <LabeledField label="Status">
