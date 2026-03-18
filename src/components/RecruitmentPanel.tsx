@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, useTransition, type Dispatch, type SetStateAction } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
 import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
@@ -379,6 +379,7 @@ export default function RecruitmentPanel({
     key: "score",
     direction: "desc",
   });
+  const formPanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     try {
@@ -558,6 +559,10 @@ export default function RecruitmentPanel({
       kills: entry.kills,
       manualAdjustment: entry.manualAdjustment,
     });
+    setMessage({ type: "success", text: `Editing applicant: ${entry.name}` });
+    window.requestAnimationFrame(() => {
+      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const editMigration = (entry: MigrationRecord) => {
@@ -579,6 +584,10 @@ export default function RecruitmentPanel({
       combatPower: entry.combatPower,
       kills: entry.kills,
       manualAdjustment: entry.manualAdjustment,
+    });
+    setMessage({ type: "success", text: `Editing migration candidate: ${entry.name}` });
+    window.requestAnimationFrame(() => {
+      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -755,7 +764,7 @@ export default function RecruitmentPanel({
             </div>
           </section>
 
-          <section className="cyber-card flex-col gap-4">
+          <section ref={formPanelRef} className="cyber-card flex-col gap-4">
             <h3 style={{ color: "var(--accent-neon)" }}>
               {tab === "applicants" ? (applicantEditId ? "Edit Applicant" : "New Applicant") : migrationEditId ? "Edit Migration Candidate" : "New Migration Candidate"}
             </h3>
