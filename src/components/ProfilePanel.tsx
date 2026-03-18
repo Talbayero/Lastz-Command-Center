@@ -42,6 +42,14 @@ type ProfileData = {
   snapshots: ProfileSnapshot[];
 };
 
+type AllianceAverage = {
+  techPower: number;
+  heroPower: number;
+  troopPower: number;
+  modVehiclePower: number;
+  structurePower: number;
+};
+
 const correctionFields: Array<keyof Pick<
   ProfileData,
   "techPower" | "heroPower" | "troopPower" | "modVehiclePower" | "structurePower" | "kills"
@@ -56,12 +64,14 @@ function formatDate(value: string | null) {
 
 export default function ProfilePanel({
   profile,
+  allianceAverage,
   availablePlayers,
   canEditProfile,
   canManageNotes,
   canBrowsePlayers,
 }: {
   profile: ProfileData;
+  allianceAverage: AllianceAverage;
   availablePlayers: string[];
   canEditProfile: boolean;
   canManageNotes: boolean;
@@ -94,6 +104,60 @@ export default function ProfilePanel({
   );
 
   const missingFields = correctionFields.filter((field) => formData[field] === 0);
+  const improvementRecommendations = useMemo(() => {
+    const recommendationPool = [
+      {
+        label: "Troop Power",
+        current: formData.troopPower,
+        average: allianceAverage.troopPower,
+        suggestion: "Build troop power first to close the biggest frontline gap.",
+      },
+      {
+        label: "Hero Power",
+        current: formData.heroPower,
+        average: allianceAverage.heroPower,
+        suggestion: "Invest in heroes next to raise march quality and survivability.",
+      },
+      {
+        label: "Tech Power",
+        current: formData.techPower,
+        average: allianceAverage.techPower,
+        suggestion: "Push research upgrades to catch up with alliance tech benchmarks.",
+      },
+      {
+        label: "Mod Vehicle Power",
+        current: formData.modVehiclePower,
+        average: allianceAverage.modVehiclePower,
+        suggestion: "Upgrade mod vehicles to improve march efficiency and duel output.",
+      },
+      {
+        label: "Structure Power",
+        current: formData.structurePower,
+        average: allianceAverage.structurePower,
+        suggestion: "Strengthen structures to support long-term total power growth.",
+      },
+    ]
+      .map((entry) => ({
+        ...entry,
+        gap: Math.max(0, Math.round(entry.average - entry.current)),
+        percentBehind: entry.average > 0 ? ((entry.average - entry.current) / entry.average) * 100 : 0,
+      }))
+      .filter((entry) => entry.gap > 0)
+      .sort((a, b) => b.gap - a.gap);
+
+    return recommendationPool.slice(0, 3);
+  }, [
+    allianceAverage.heroPower,
+    allianceAverage.modVehiclePower,
+    allianceAverage.structurePower,
+    allianceAverage.techPower,
+    allianceAverage.troopPower,
+    formData.heroPower,
+    formData.modVehiclePower,
+    formData.structurePower,
+    formData.techPower,
+    formData.troopPower,
+  ]);
 
   const onSaveProfile = () => {
     setMessage(null);
@@ -168,6 +232,34 @@ export default function ProfilePanel({
               Missing or zero-value fields detected: {missingFields.join(", ")}.
             </div>
           )}
+
+          <div style={recommendationCardStyle}>
+            <div style={{ ...miniLabelStyle, color: "var(--accent-neon)" }}>Recommended Focus</div>
+            {improvementRecommendations.length === 0 ? (
+              <div style={{ marginTop: "0.55rem", color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                You are at or above the current alliance average on all tracked stats.
+              </div>
+            ) : (
+              <div className="flex-col gap-3" style={{ marginTop: "0.8rem" }}>
+                {improvementRecommendations.map((entry) => (
+                  <div key={entry.label} style={recommendationRowStyle}>
+                    <div className="flex-col gap-2">
+                      <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{entry.label}</div>
+                      <div style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{entry.suggestion}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ color: "var(--accent-purple)", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+                        {entry.gap.toLocaleString()} behind
+                      </div>
+                      <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                        {Math.max(0, Math.round(entry.percentBehind))}% under alliance avg
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="cyber-card flex-col gap-4">
@@ -322,3 +414,20 @@ const messageStyle = (type: "success" | "error"): React.CSSProperties => ({
   fontFamily: "var(--font-mono)",
   fontSize: "0.85rem",
 });
+
+const recommendationCardStyle: React.CSSProperties = {
+  backgroundColor: "var(--bg-input)",
+  border: "1px solid var(--border-subtle)",
+  borderRadius: "6px",
+  padding: "1rem",
+};
+
+const recommendationRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+  flexWrap: "wrap",
+  paddingBottom: "0.85rem",
+  borderBottom: "1px solid rgba(255,255,255,0.06)",
+};

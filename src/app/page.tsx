@@ -278,6 +278,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
               profileData ? (
                 <ProfilePanel
                   profile={profileData}
+                  allianceAverage={allianceAvg}
                   availablePlayers={allPlayerNames}
                   canEditProfile={currentUser.playerId === profileData.id || canBrowseProfiles}
                   canManageNotes={canBrowseProfiles}
