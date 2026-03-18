@@ -210,8 +210,7 @@ function computeScore(entry: SharedDraft, weights: ScoreWeights) {
       (entry.techPower / 1_000_000) * weights.tech +
       (entry.kills / 1_000_000) * weights.kills +
       (entry.structurePower / 1_000_000) * weights.structure +
-      (entry.modVehiclePower / 1_000_000) * weights.modVehicle +
-      entry.manualAdjustment
+      (entry.modVehiclePower / 1_000_000) * weights.modVehicle
     ).toFixed(2)
   );
 }
@@ -604,7 +603,7 @@ export default function RecruitmentPanel({
       march4Power: entry.march4Power,
       combatPower: entry.combatPower,
       kills: entry.kills,
-      manualAdjustment: entry.manualAdjustment,
+      manualAdjustment: 0,
     });
     setMessage({ type: "success", text: `Editing applicant: ${entry.name}` });
     window.requestAnimationFrame(() => {
@@ -634,7 +633,7 @@ export default function RecruitmentPanel({
       march4Power: entry.march4Power,
       combatPower: entry.combatPower,
       kills: entry.kills,
-      manualAdjustment: entry.manualAdjustment,
+      manualAdjustment: 0,
     });
     setMessage({ type: "success", text: `Editing migration candidate: ${entry.name}` });
     window.requestAnimationFrame(() => {
@@ -1099,7 +1098,6 @@ function ApplicantForm({ draft, setDraft }: any) {
           {applicantStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
       </LabeledField>
-      <LabeledField label="Manual Adjustment"><input className="cyber-input" type="number" value={draft.manualAdjustment} onChange={(e) => setDraft({ ...draft, manualAdjustment: Number(e.target.value) || 0 })} /></LabeledField>
       <SharedStatFields draft={draft} setDraft={setDraft} />
       <div style={{ gridColumn: "1 / -1" }}>
         <LabeledField label="Notes"><textarea className="cyber-input" rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></LabeledField>
@@ -1129,7 +1127,6 @@ function MigrationForm({ draft, setDraft }: any) {
           {migrationContactStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
       </LabeledField>
-      <LabeledField label="Manual Adjustment"><input className="cyber-input" type="number" value={draft.manualAdjustment} onChange={(e) => setDraft({ ...draft, manualAdjustment: Number(e.target.value) || 0 })} /></LabeledField>
       <div style={{ gridColumn: "1 / -1" }}>
         <LabeledField label="Reason for Leaving"><input className="cyber-input" value={draft.reasonForLeaving} onChange={(e) => setDraft({ ...draft, reasonForLeaving: e.target.value })} /></LabeledField>
       </div>
@@ -1272,7 +1269,6 @@ function formulaLabel(label: string, weights: ScoreWeights) {
     `Kills x ${weights.kills.toFixed(2)}`,
     weights.modVehicle > 0 ? `Mod Vehicle x ${weights.modVehicle.toFixed(2)}` : null,
     `Structure x ${weights.structure.toFixed(2)}`,
-    "Manual Adjustment",
   ].filter(Boolean);
   return `${label} Score = ${parts.join(" + ")}`;
 }

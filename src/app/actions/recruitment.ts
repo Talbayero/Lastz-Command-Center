@@ -85,8 +85,7 @@ function applicantScore(input: RecruitmentStatInput) {
       millions.hero * 0.15 +
       millions.tech * 0.1 +
       millions.kills * 0.1 +
-      millions.structure * 0.05 +
-      normalizeSignedInt(input.manualAdjustment)
+      millions.structure * 0.05
     ).toFixed(2)
   );
 }
@@ -111,8 +110,7 @@ function migrationScore(input: RecruitmentStatInput) {
       millions.tech * 0.1 +
       millions.kills * 0.1 +
       millions.modVehicle * 0.05 +
-      millions.structure * 0.05 +
-      normalizeSignedInt(input.manualAdjustment)
+      millions.structure * 0.05
     ).toFixed(2)
   );
 }
@@ -154,7 +152,7 @@ export async function saveApplicant(input: ApplicantInput) {
       structurePower: normalizeInt(input.structurePower),
       ...getCombatData(input),
       kills: normalizeInt(input.kills),
-      manualAdjustment: normalizeSignedInt(input.manualAdjustment),
+      manualAdjustment: 0,
     };
 
     if (input.id) {
@@ -211,7 +209,7 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
       structurePower: normalizeInt(input.structurePower),
       ...getCombatData(input),
       kills: normalizeInt(input.kills),
-      manualAdjustment: normalizeSignedInt(input.manualAdjustment),
+      manualAdjustment: 0,
     };
 
     if (input.id) {
