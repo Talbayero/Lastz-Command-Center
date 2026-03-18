@@ -16,6 +16,10 @@ export type RecruitmentStatInput = {
   troopPower: number;
   modVehiclePower: number;
   structurePower: number;
+  march1Power: number;
+  march2Power: number;
+  march3Power: number;
+  march4Power: number;
   combatPower: number;
   kills: number;
   notes: string;
@@ -47,10 +51,27 @@ function normalizeSignedInt(value: unknown) {
   return Math.round(Number(value) || 0);
 }
 
+function getCombatData(input: RecruitmentStatInput) {
+  const march1Power = normalizeInt(input.march1Power);
+  const march2Power = normalizeInt(input.march2Power);
+  const march3Power = normalizeInt(input.march3Power);
+  const march4Power = normalizeInt(input.march4Power);
+  const marchTotal = march1Power + march2Power + march3Power + march4Power;
+
+  return {
+    march1Power,
+    march2Power,
+    march3Power,
+    march4Power,
+    combatPower: marchTotal > 0 ? marchTotal : normalizeInt(input.combatPower),
+  };
+}
+
 function applicantScore(input: RecruitmentStatInput) {
+  const combat = getCombatData(input).combatPower;
   const millions = {
     troop: normalizeInt(input.troopPower) / 1_000_000,
-    combat: normalizeInt(input.combatPower) / 1_000_000,
+    combat: combat / 1_000_000,
     hero: normalizeInt(input.heroPower) / 1_000_000,
     tech: normalizeInt(input.techPower) / 1_000_000,
     kills: normalizeInt(input.kills) / 1_000_000,
@@ -71,9 +92,10 @@ function applicantScore(input: RecruitmentStatInput) {
 }
 
 function migrationScore(input: RecruitmentStatInput) {
+  const combat = getCombatData(input).combatPower;
   const millions = {
     troop: normalizeInt(input.troopPower) / 1_000_000,
-    combat: normalizeInt(input.combatPower) / 1_000_000,
+    combat: combat / 1_000_000,
     hero: normalizeInt(input.heroPower) / 1_000_000,
     tech: normalizeInt(input.techPower) / 1_000_000,
     kills: normalizeInt(input.kills) / 1_000_000,
@@ -130,7 +152,7 @@ export async function saveApplicant(input: ApplicantInput) {
       troopPower: normalizeInt(input.troopPower),
       modVehiclePower: normalizeInt(input.modVehiclePower),
       structurePower: normalizeInt(input.structurePower),
-      combatPower: normalizeInt(input.combatPower),
+      ...getCombatData(input),
       kills: normalizeInt(input.kills),
       manualAdjustment: normalizeSignedInt(input.manualAdjustment),
     };
@@ -187,7 +209,7 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
       troopPower: normalizeInt(input.troopPower),
       modVehiclePower: normalizeInt(input.modVehiclePower),
       structurePower: normalizeInt(input.structurePower),
-      combatPower: normalizeInt(input.combatPower),
+      ...getCombatData(input),
       kills: normalizeInt(input.kills),
       manualAdjustment: normalizeSignedInt(input.manualAdjustment),
     };

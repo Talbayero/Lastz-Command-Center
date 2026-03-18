@@ -25,6 +25,10 @@ type ApplicantRecord = {
   troopPower: number;
   modVehiclePower: number;
   structurePower: number;
+  march1Power: number;
+  march2Power: number;
+  march3Power: number;
+  march4Power: number;
   combatPower: number;
   kills: number;
   manualAdjustment: number;
@@ -47,6 +51,10 @@ type MigrationRecord = {
   troopPower: number;
   modVehiclePower: number;
   structurePower: number;
+  march1Power: number;
+  march2Power: number;
+  march3Power: number;
+  march4Power: number;
   combatPower: number;
   kills: number;
   manualAdjustment: number;
@@ -61,6 +69,10 @@ type SharedDraft = {
   troopPower: number;
   modVehiclePower: number;
   structurePower: number;
+  march1Power: number;
+  march2Power: number;
+  march3Power: number;
+  march4Power: number;
   combatPower: number;
   kills: number;
   notes: string;
@@ -141,6 +153,10 @@ const emptySharedDraft: SharedDraft = {
   troopPower: 0,
   modVehiclePower: 0,
   structurePower: 0,
+  march1Power: 0,
+  march2Power: 0,
+  march3Power: 0,
+  march4Power: 0,
   combatPower: 0,
   kills: 0,
   notes: "",
@@ -185,10 +201,11 @@ const defaultMigrationWeights: ScoreWeights = {
 };
 
 function computeScore(entry: SharedDraft, weights: ScoreWeights) {
+  const combatPower = effectiveCombatPower(entry);
   return Number(
     (
       (entry.troopPower / 1_000_000) * weights.troop +
-      (entry.combatPower / 1_000_000) * weights.combat +
+      (combatPower / 1_000_000) * weights.combat +
       (entry.heroPower / 1_000_000) * weights.hero +
       (entry.techPower / 1_000_000) * weights.tech +
       (entry.kills / 1_000_000) * weights.kills +
@@ -197,6 +214,15 @@ function computeScore(entry: SharedDraft, weights: ScoreWeights) {
       entry.manualAdjustment
     ).toFixed(2)
   );
+}
+
+function marchTotal(entry: Pick<SharedDraft, "march1Power" | "march2Power" | "march3Power" | "march4Power">) {
+  return entry.march1Power + entry.march2Power + entry.march3Power + entry.march4Power;
+}
+
+function effectiveCombatPower(entry: SharedDraft) {
+  const total = marchTotal(entry);
+  return total > 0 ? total : entry.combatPower;
 }
 
 function totalWeight(weights: ScoreWeights) {
@@ -231,7 +257,7 @@ function hasMissingStats(entry: SharedDraft) {
     entry.troopPower,
     entry.modVehiclePower,
     entry.structurePower,
-    entry.combatPower,
+    effectiveCombatPower(entry),
     entry.kills,
   ].some((value) => value === 0);
 }
@@ -486,6 +512,10 @@ export default function RecruitmentPanel({
         troopPower: parsed.powerStats.troop,
         modVehiclePower: parsed.powerStats.modVehicle,
         structurePower: parsed.powerStats.structure,
+        march1Power: 0,
+        march2Power: 0,
+        march3Power: 0,
+        march4Power: 0,
         combatPower: 0,
         kills: parsed.kills,
         notes: "",
@@ -568,6 +598,10 @@ export default function RecruitmentPanel({
       troopPower: entry.troopPower,
       modVehiclePower: entry.modVehiclePower,
       structurePower: entry.structurePower,
+      march1Power: entry.march1Power,
+      march2Power: entry.march2Power,
+      march3Power: entry.march3Power,
+      march4Power: entry.march4Power,
       combatPower: entry.combatPower,
       kills: entry.kills,
       manualAdjustment: entry.manualAdjustment,
@@ -594,6 +628,10 @@ export default function RecruitmentPanel({
       troopPower: entry.troopPower,
       modVehiclePower: entry.modVehiclePower,
       structurePower: entry.structurePower,
+      march1Power: entry.march1Power,
+      march2Power: entry.march2Power,
+      march3Power: entry.march3Power,
+      march4Power: entry.march4Power,
       combatPower: entry.combatPower,
       kills: entry.kills,
       manualAdjustment: entry.manualAdjustment,
@@ -959,7 +997,11 @@ export default function RecruitmentPanel({
                             <MiniMetric label="Verify" value={(row as any).hasWarning ? "Needs Review" : "OK"} />
                             {tab === "migrations" && <MiniMetric label="Contact" value={(row as any).contactStatus} />}
                             <MiniMetric label="Troop" value={row.troopPower.toLocaleString()} />
-                            <MiniMetric label="Combat" value={row.combatPower.toLocaleString()} />
+                            <MiniMetric label="Combat" value={effectiveCombatPower(row).toLocaleString()} />
+                            <MiniMetric label="March 1" value={row.march1Power.toLocaleString()} />
+                            <MiniMetric label="March 2" value={row.march2Power.toLocaleString()} />
+                            <MiniMetric label="March 3" value={row.march3Power.toLocaleString()} />
+                            <MiniMetric label="March 4" value={row.march4Power.toLocaleString()} />
                             <MiniMetric label="Kills" value={row.kills.toLocaleString()} />
                             <MiniMetric label="Hero" value={row.heroPower.toLocaleString()} />
                             <MiniMetric label="Tech" value={row.techPower.toLocaleString()} />
@@ -1011,7 +1053,7 @@ export default function RecruitmentPanel({
                 <MiniMetric label="Status" value={row.status} />
                 {tab === "migrations" && <MiniMetric label="Contact" value={(row as any).contactStatus} />}
                 <MiniMetric label="Troop" value={row.troopPower.toLocaleString()} />
-                <MiniMetric label="Combat" value={row.combatPower.toLocaleString()} />
+                <MiniMetric label="Combat" value={effectiveCombatPower(row).toLocaleString()} />
                 <MiniMetric label="Kills" value={row.kills.toLocaleString()} />
                 <MiniMetric label="Score" value={row.score.toFixed(2)} />
               </div>
@@ -1106,9 +1148,9 @@ function SharedStatFields({ draft, setDraft }: any) {
     ["Troop Power", "troopPower"],
     ["Mod Vehicle Power", "modVehiclePower"],
     ["Structure Power", "structurePower"],
-    ["Combat Power", "combatPower"],
     ["Kills", "kills"],
   ] as const;
+  const combatPower = effectiveCombatPower(draft);
 
   return (
     <>
@@ -1117,6 +1159,21 @@ function SharedStatFields({ draft, setDraft }: any) {
           <input className="cyber-input" type="number" value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) || 0 })} />
         </LabeledField>
       ))}
+      <LabeledField label="March 1 Power">
+        <input className="cyber-input" type="number" value={draft.march1Power} onChange={(e) => setDraft({ ...draft, march1Power: Number(e.target.value) || 0 })} />
+      </LabeledField>
+      <LabeledField label="March 2 Power">
+        <input className="cyber-input" type="number" value={draft.march2Power} onChange={(e) => setDraft({ ...draft, march2Power: Number(e.target.value) || 0 })} />
+      </LabeledField>
+      <LabeledField label="March 3 Power">
+        <input className="cyber-input" type="number" value={draft.march3Power} onChange={(e) => setDraft({ ...draft, march3Power: Number(e.target.value) || 0 })} />
+      </LabeledField>
+      <LabeledField label="March 4 Power (Optional)">
+        <input className="cyber-input" type="number" value={draft.march4Power} onChange={(e) => setDraft({ ...draft, march4Power: Number(e.target.value) || 0 })} />
+      </LabeledField>
+      <LabeledField label="Combat Power (Auto)">
+        <input className="cyber-input" type="text" value={combatPower.toLocaleString()} readOnly />
+      </LabeledField>
     </>
   );
 }
