@@ -140,6 +140,14 @@ model MigrationCandidate {
   updatedAt       DateTime @updatedAt
 }
 
+model RecruitmentScoringConfig {
+  id        String   @id @default(cuid())
+  scope     String   @unique
+  weights   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model AllianceDuelRequirement {
   id           String   @id @default(cuid())
   dayKey        String   @unique

@@ -50,22 +50,52 @@ function flattenPlayerSnapshot(player: PlayerLike, snapshot?: SnapshotLike | nul
 }
 
 export async function getAllianceAverage() {
-  const result = await prisma.snapshot.aggregate({
-    _avg: {
-      techPower: true,
-      heroPower: true,
-      troopPower: true,
-      modVehiclePower: true,
-      structurePower: true,
+  const players = await prisma.player.findMany({
+    include: {
+      snapshots: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
     },
   });
 
+  const latestSnapshots = players
+    .map((player) => player.snapshots[0])
+    .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot));
+
+  if (latestSnapshots.length === 0) {
+    return {
+      techPower: 0,
+      heroPower: 0,
+      troopPower: 0,
+      modVehiclePower: 0,
+      structurePower: 0,
+    };
+  }
+
+  const totals = latestSnapshots.reduce(
+    (acc, snapshot) => ({
+      techPower: acc.techPower + snapshot.techPower,
+      heroPower: acc.heroPower + snapshot.heroPower,
+      troopPower: acc.troopPower + snapshot.troopPower,
+      modVehiclePower: acc.modVehiclePower + snapshot.modVehiclePower,
+      structurePower: acc.structurePower + snapshot.structurePower,
+    }),
+    {
+      techPower: 0,
+      heroPower: 0,
+      troopPower: 0,
+      modVehiclePower: 0,
+      structurePower: 0,
+    }
+  );
+
   return {
-    techPower: result._avg.techPower ?? 0,
-    heroPower: result._avg.heroPower ?? 0,
-    troopPower: result._avg.troopPower ?? 0,
-    modVehiclePower: result._avg.modVehiclePower ?? 0,
-    structurePower: result._avg.structurePower ?? 0,
+    techPower: totals.techPower / latestSnapshots.length,
+    heroPower: totals.heroPower / latestSnapshots.length,
+    troopPower: totals.troopPower / latestSnapshots.length,
+    modVehiclePower: totals.modVehiclePower / latestSnapshots.length,
+    structurePower: totals.structurePower / latestSnapshots.length,
   };
 }
 

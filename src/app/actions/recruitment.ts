@@ -3,6 +3,13 @@
 import { revalidatePath } from "next/cache";
 import prisma from "@/utils/db";
 import { requirePermission } from "@/utils/auth";
+import {
+  computeRecruitmentScore,
+  getCategoryFromScore,
+  getDefaultWeights,
+  normalizeWeights,
+  type RecruitmentScope,
+} from "@/utils/recruitmentScoring";
 
 const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"] as const;
 const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"] as const;
@@ -23,13 +30,11 @@ export type RecruitmentStatInput = {
   combatPower: number;
   kills: number;
   notes: string;
-  manualAdjustment: number;
 };
 
 export type ApplicantInput = RecruitmentStatInput & {
   id?: string;
   timezone: string;
-  category: string;
   status: string;
 };
 
@@ -45,10 +50,6 @@ export type MigrationCandidateInput = RecruitmentStatInput & {
 
 function normalizeInt(value: unknown) {
   return Math.max(0, Math.round(Number(value) || 0));
-}
-
-function normalizeSignedInt(value: unknown) {
-  return Math.round(Number(value) || 0);
 }
 
 function getCombatData(input: RecruitmentStatInput) {
@@ -67,59 +68,56 @@ function getCombatData(input: RecruitmentStatInput) {
   };
 }
 
-function applicantScore(input: RecruitmentStatInput) {
-  const combat = getCombatData(input).combatPower;
-  const millions = {
-    troop: normalizeInt(input.troopPower) / 1_000_000,
-    combat: combat / 1_000_000,
-    hero: normalizeInt(input.heroPower) / 1_000_000,
-    tech: normalizeInt(input.techPower) / 1_000_000,
-    kills: normalizeInt(input.kills) / 1_000_000,
-    structure: normalizeInt(input.structurePower) / 1_000_000,
-  };
+async function getScoringWeights(scope: RecruitmentScope) {
+  const config = await prisma.recruitmentScoringConfig.findUnique({
+    where: { scope },
+    select: { weights: true },
+  });
 
-  return Number(
-    (
-      millions.troop * 0.4 +
-      millions.combat * 0.2 +
-      millions.hero * 0.15 +
-      millions.tech * 0.1 +
-      millions.kills * 0.1 +
-      millions.structure * 0.05
-    ).toFixed(2)
-  );
+  return normalizeWeights(config?.weights, getDefaultWeights(scope));
 }
 
-function migrationScore(input: RecruitmentStatInput) {
-  const combat = getCombatData(input).combatPower;
-  const millions = {
-    troop: normalizeInt(input.troopPower) / 1_000_000,
-    combat: combat / 1_000_000,
-    hero: normalizeInt(input.heroPower) / 1_000_000,
-    tech: normalizeInt(input.techPower) / 1_000_000,
-    kills: normalizeInt(input.kills) / 1_000_000,
-    structure: normalizeInt(input.structurePower) / 1_000_000,
-    modVehicle: normalizeInt(input.modVehiclePower) / 1_000_000,
-  };
+export async function ensureRecruitmentScoringConfigs() {
+  await requirePermission("manageRecruitment");
 
-  return Number(
-    (
-      millions.troop * 0.3 +
-      millions.combat * 0.25 +
-      millions.hero * 0.15 +
-      millions.tech * 0.1 +
-      millions.kills * 0.1 +
-      millions.modVehicle * 0.05 +
-      millions.structure * 0.05
-    ).toFixed(2)
-  );
+  const scopes: RecruitmentScope[] = ["applicants", "migrations"];
+  for (const scope of scopes) {
+    await prisma.recruitmentScoringConfig.upsert({
+      where: { scope },
+      update: {},
+      create: {
+        scope,
+        weights: getDefaultWeights(scope),
+      },
+    });
+  }
+
+  return { success: true };
 }
 
-function defaultCategoryFromScore(score: number) {
-  if (score >= 120) return "Elite";
-  if (score >= 80) return "Advanced";
-  if (score >= 45) return "Medium";
-  return "Regular";
+export async function saveRecruitmentScoringConfig(input: {
+  scope: RecruitmentScope;
+  weights: Record<string, unknown>;
+}) {
+  try {
+    await requirePermission("manageRecruitment");
+    const weights = normalizeWeights(input.weights, getDefaultWeights(input.scope));
+
+    await prisma.recruitmentScoringConfig.upsert({
+      where: { scope: input.scope },
+      update: { weights },
+      create: {
+        scope: input.scope,
+        weights,
+      },
+    });
+
+    revalidatePath("/");
+    return { success: true, weights };
+  } catch (error: any) {
+    console.error("SAVE RECRUITMENT SCORING CONFIG ERROR:", error);
+    return { success: false, error: error.message || "Failed to save recruitment scoring config." };
+  }
 }
 
 export async function saveApplicant(input: ApplicantInput) {
@@ -135,14 +133,10 @@ export async function saveApplicant(input: ApplicantInput) {
       return { success: false, error: "Invalid applicant status." };
     }
 
-    if (input.category && !recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
-      return { success: false, error: "Invalid applicant category." };
-    }
-
     const data = {
       name,
       timezone: input.timezone.trim(),
-      category: input.category || defaultCategoryFromScore(applicantScore(input)),
+      category: "",
       status: input.status,
       notes: input.notes.trim(),
       techPower: normalizeInt(input.techPower),
@@ -155,18 +149,15 @@ export async function saveApplicant(input: ApplicantInput) {
       manualAdjustment: 0,
     };
 
-    if (input.id) {
-      const record = await prisma.allianceApplicant.update({
-        where: { id: input.id },
-        data,
-      });
-      revalidatePath("/");
-      return { success: true, record };
-    } else {
-      const record = await prisma.allianceApplicant.create({ data });
-      revalidatePath("/");
-      return { success: true, record };
-    }
+    const record = input.id
+      ? await prisma.allianceApplicant.update({
+          where: { id: input.id },
+          data,
+        })
+      : await prisma.allianceApplicant.create({ data });
+
+    revalidatePath("/");
+    return { success: true, record };
   } catch (error: any) {
     console.error("SAVE APPLICANT ERROR:", error);
     return { success: false, error: error.message || "Failed to save applicant." };
@@ -190,19 +181,11 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
       return { success: false, error: "Invalid contact status." };
     }
 
-    if (!recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
+    if (input.category && !recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
       return { success: false, error: "Invalid migration category." };
     }
 
-    const data = {
-      name,
-      originalServer: input.originalServer.trim(),
-      originalAlliance: input.originalAlliance.trim(),
-      reasonForLeaving: input.reasonForLeaving.trim(),
-      contactStatus: input.contactStatus,
-      category: input.category || defaultCategoryFromScore(migrationScore(input)),
-      status: input.status,
-      notes: input.notes.trim(),
+    const normalizedStats = {
       techPower: normalizeInt(input.techPower),
       heroPower: normalizeInt(input.heroPower),
       troopPower: normalizeInt(input.troopPower),
@@ -210,21 +193,32 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
       structurePower: normalizeInt(input.structurePower),
       ...getCombatData(input),
       kills: normalizeInt(input.kills),
+    };
+    const migrationWeights = await getScoringWeights("migrations");
+    const fallbackCategory = getCategoryFromScore(computeRecruitmentScore(normalizedStats, migrationWeights));
+
+    const data = {
+      name,
+      originalServer: input.originalServer.trim(),
+      originalAlliance: input.originalAlliance.trim(),
+      reasonForLeaving: input.reasonForLeaving.trim(),
+      contactStatus: input.contactStatus,
+      category: input.category || fallbackCategory,
+      status: input.status,
+      notes: input.notes.trim(),
+      ...normalizedStats,
       manualAdjustment: 0,
     };
 
-    if (input.id) {
-      const record = await prisma.migrationCandidate.update({
-        where: { id: input.id },
-        data,
-      });
-      revalidatePath("/");
-      return { success: true, record };
-    } else {
-      const record = await prisma.migrationCandidate.create({ data });
-      revalidatePath("/");
-      return { success: true, record };
-    }
+    const record = input.id
+      ? await prisma.migrationCandidate.update({
+          where: { id: input.id },
+          data,
+        })
+      : await prisma.migrationCandidate.create({ data });
+
+    revalidatePath("/");
+    return { success: true, record };
   } catch (error: any) {
     console.error("SAVE MIGRATION CANDIDATE ERROR:", error);
     return { success: false, error: error.message || "Failed to save migration candidate." };

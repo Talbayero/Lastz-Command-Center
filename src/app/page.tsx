@@ -17,6 +17,7 @@ import { getCurrentUser, hasPermission } from "@/utils/auth";
 import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
 import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
+import { getDefaultWeights, normalizeWeights } from "@/utils/recruitmentScoring";
 
 export default async function Home(props: { searchParams: Promise<{ name?: string; view?: string }> }) {
   const searchParams = await props.searchParams;
@@ -43,6 +44,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const canManageBugs = hasPermission(currentUser, "manageBugs");
   const canAccessAdmin = hasPermission(currentUser, "manageUsers") || hasPermission(currentUser, "manageRoles");
   const canBrowseProfiles = canAccessAdmin || hasPermission(currentUser, "editRoster");
+  const canUploadForOthers = canAccessAdmin || hasPermission(currentUser, "editRoster") || hasPermission(currentUser, "editPlayerNames");
 
   const availableViews = [
     "profile",
@@ -99,6 +101,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   let profileData: any = null;
   let recruitmentApplicants: any[] = [];
   let recruitmentMigrations: any[] = [];
+  let recruitmentApplicantWeights = getDefaultWeights("applicants");
+  let recruitmentMigrationWeights = getDefaultWeights("migrations");
 
   if (shouldLoadDuelData) {
     try {
@@ -125,10 +129,27 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   if (shouldLoadRecruitmentData) {
     try {
-      [recruitmentApplicants, recruitmentMigrations] = await Promise.all([
+      await prisma.recruitmentScoringConfig.upsert({
+        where: { scope: "applicants" },
+        update: {},
+        create: { scope: "applicants", weights: getDefaultWeights("applicants") },
+      });
+      await prisma.recruitmentScoringConfig.upsert({
+        where: { scope: "migrations" },
+        update: {},
+        create: { scope: "migrations", weights: getDefaultWeights("migrations") },
+      });
+
+      const [applicantConfig, migrationConfig, applicants, migrations] = await Promise.all([
+        prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } }),
+        prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } }),
         prisma.allianceApplicant.findMany({ orderBy: { updatedAt: "desc" } }),
         prisma.migrationCandidate.findMany({ orderBy: { updatedAt: "desc" } }),
       ]);
+      recruitmentApplicantWeights = normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants"));
+      recruitmentMigrationWeights = normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations"));
+      recruitmentApplicants = applicants;
+      recruitmentMigrations = migrations;
     } catch (error: any) {
       console.error("RECRUITMENT PAGE LOAD ERROR:", error);
       recruitmentLoadError = "Recruitment data is temporarily unavailable. Refresh in a moment and try again.";
@@ -345,6 +366,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                     createdAt: entry.createdAt.toISOString(),
                     updatedAt: entry.updatedAt.toISOString(),
                   }))}
+                  initialApplicantWeights={recruitmentApplicantWeights}
+                  initialMigrationWeights={recruitmentMigrationWeights}
                   canManage={canManageRecruitment}
                 />
               )
@@ -428,7 +451,9 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                     roleName: account?.role.name ?? null,
                     isActive: account?.isActive ?? true,
                     disabledByUser: account?.disabledByUser ?? false,
-                    isOnline: Boolean(account?.sessions.length),
+                    isOnline:
+                      Boolean(account?.sessions.length) &&
+                      Boolean(account?.lastLoginAt && account.lastLoginAt > new Date(Date.now() - 15 * 60 * 1000)),
                     lastLoginAt: account?.lastLoginAt ?? null,
                   };
                 })}
@@ -447,7 +472,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
         {currentView === "performance" && canUploadProfile && (
           <section className="col-span-4 flex-col gap-6">
-            <OcrUploader />
+            <OcrUploader initialName={currentUser.playerName} lockName={!canUploadForOthers} />
             <div className="cyber-card">
               <h3 style={{ color: "var(--accent-purple)", marginBottom: "1.5rem" }}>Scoring Engine</h3>
               <ScoringEngine />

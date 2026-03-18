@@ -2,11 +2,11 @@
 
 import prisma from "@/utils/db";
 import { revalidatePath } from "next/cache";
-import { requirePermission } from "@/utils/auth";
+import { hasPermission, requirePermission } from "@/utils/auth";
 
 export async function savePlayerData(data: any) {
   try {
-    await requirePermission("uploadProfile");
+    const actingUser = await requirePermission("uploadProfile");
 
     const name = (data.name ?? "").trim();
     const kills = Math.round(Number(data.kills ?? 0) || 0);
@@ -36,31 +36,71 @@ export async function savePlayerData(data: any) {
       (powerStats.structure  * SCORE_WEIGHTS.structure) +
       (powerStats.modVehicle * SCORE_WEIGHTS.modVehicle);
 
+    const canEditOthers =
+      hasPermission(actingUser, "editRoster") ||
+      hasPermission(actingUser, "editPlayerNames") ||
+      hasPermission(actingUser, "manageUsers");
+
     await prisma.$transaction(async (tx) => {
-      const existingPlayer = await tx.player.findUnique({
-        where: { name },
-        select: { id: true },
+      const existingPlayer = await tx.player.findFirst({
+        where: {
+          name: {
+            equals: name,
+            mode: "insensitive",
+          },
+        },
+        select: { id: true, name: true },
       });
 
-      const player = existingPlayer
-        ? await tx.player.update({
-            where: { id: existingPlayer.id },
-            data: {
-              kills,
-              totalPower,
-              latestScore: rawScore,
-            },
-            select: { id: true },
-          })
-        : await tx.player.create({
-            data: {
-              name,
-              kills,
-              totalPower,
-              latestScore: rawScore,
-            },
-            select: { id: true },
-          });
+      let targetPlayerId = actingUser.playerId;
+      let targetPlayerName = actingUser.playerName;
+
+      if (canEditOthers) {
+        targetPlayerId = existingPlayer?.id ?? "";
+        targetPlayerName = existingPlayer?.name ?? name;
+      } else {
+        const ownPlayer = await tx.player.findUnique({
+          where: { id: actingUser.playerId },
+          select: { id: true, name: true },
+        });
+
+        if (!ownPlayer) {
+          throw new Error("Your linked player record could not be found.");
+        }
+
+        if (existingPlayer && existingPlayer.id !== ownPlayer.id) {
+          throw new Error("You can only update your own player profile.");
+        }
+
+        if (name && name.toLowerCase() !== ownPlayer.name.toLowerCase()) {
+          throw new Error("You can only save data to your own player profile.");
+        }
+
+        targetPlayerId = ownPlayer.id;
+        targetPlayerName = ownPlayer.name;
+      }
+
+      const player =
+        targetPlayerId && (existingPlayer || !canEditOthers)
+          ? await tx.player.update({
+              where: { id: targetPlayerId },
+              data: {
+                name: targetPlayerName,
+                kills,
+                totalPower,
+                latestScore: rawScore,
+              },
+              select: { id: true },
+            })
+          : await tx.player.create({
+              data: {
+                name: targetPlayerName,
+                kills,
+                totalPower,
+                latestScore: rawScore,
+              },
+              select: { id: true },
+            });
 
       await tx.snapshot.create({
         data: {

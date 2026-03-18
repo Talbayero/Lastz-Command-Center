@@ -11,13 +11,22 @@ import {
   deleteMigrationCandidate,
   saveApplicant,
   saveMigrationCandidate,
+  saveRecruitmentScoringConfig,
 } from "@/app/actions/recruitment";
+import {
+  computeRecruitmentScore,
+  getCategoryFromScore,
+  getDefaultWeights,
+  getFormulaLabel,
+  getRecommendationBand,
+  totalWeight,
+  type RecruitmentScoreWeights,
+} from "@/utils/recruitmentScoring";
 
 type ApplicantRecord = {
   id: string;
   name: string;
   timezone: string;
-  category: string;
   status: string;
   notes: string;
   techPower: number;
@@ -31,7 +40,6 @@ type ApplicantRecord = {
   march4Power: number;
   combatPower: number;
   kills: number;
-  manualAdjustment: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -57,7 +65,6 @@ type MigrationRecord = {
   march4Power: number;
   combatPower: number;
   kills: number;
-  manualAdjustment: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -76,17 +83,6 @@ type SharedDraft = {
   combatPower: number;
   kills: number;
   notes: string;
-  manualAdjustment: number;
-};
-
-type ScoreWeights = {
-  troop: number;
-  combat: number;
-  hero: number;
-  tech: number;
-  kills: number;
-  structure: number;
-  modVehicle: number;
 };
 
 type SortDirection = "asc" | "desc";
@@ -160,13 +156,11 @@ const emptySharedDraft: SharedDraft = {
   combatPower: 0,
   kills: 0,
   notes: "",
-  manualAdjustment: 0,
 };
 
 const emptyApplicantDraft = {
   ...emptySharedDraft,
   timezone: "UTC-6",
-  category: "",
   status: "New",
 };
 
@@ -180,41 +174,6 @@ const emptyMigrationDraft = {
   status: "Scouted",
 };
 
-const defaultApplicantWeights: ScoreWeights = {
-  troop: 0.4,
-  combat: 0.2,
-  hero: 0.15,
-  tech: 0.1,
-  kills: 0.1,
-  structure: 0.05,
-  modVehicle: 0,
-};
-
-const defaultMigrationWeights: ScoreWeights = {
-  troop: 0.3,
-  combat: 0.25,
-  hero: 0.15,
-  tech: 0.1,
-  kills: 0.1,
-  structure: 0.05,
-  modVehicle: 0.05,
-};
-
-function computeScore(entry: SharedDraft, weights: ScoreWeights) {
-  const combatPower = effectiveCombatPower(entry);
-  return Number(
-    (
-      (entry.troopPower / 1_000_000) * weights.troop +
-      (combatPower / 1_000_000) * weights.combat +
-      (entry.heroPower / 1_000_000) * weights.hero +
-      (entry.techPower / 1_000_000) * weights.tech +
-      (entry.kills / 1_000_000) * weights.kills +
-      (entry.structurePower / 1_000_000) * weights.structure +
-      (entry.modVehiclePower / 1_000_000) * weights.modVehicle
-    ).toFixed(2)
-  );
-}
-
 function marchTotal(entry: Pick<SharedDraft, "march1Power" | "march2Power" | "march3Power" | "march4Power">) {
   return entry.march1Power + entry.march2Power + entry.march3Power + entry.march4Power;
 }
@@ -222,31 +181,6 @@ function marchTotal(entry: Pick<SharedDraft, "march1Power" | "march2Power" | "ma
 function effectiveCombatPower(entry: SharedDraft) {
   const total = marchTotal(entry);
   return total > 0 ? total : entry.combatPower;
-}
-
-function totalWeight(weights: ScoreWeights) {
-  return (
-    weights.troop +
-    weights.combat +
-    weights.hero +
-    weights.tech +
-    weights.kills +
-    weights.structure +
-    weights.modVehicle
-  );
-}
-
-function recommendation(score: number) {
-  if (score >= 90) return "Strong Fit";
-  if (score >= 55) return "Borderline";
-  return "Low Priority";
-}
-
-function categoryFromScore(score: number) {
-  if (score >= 120) return "Elite";
-  if (score >= 80) return "Advanced";
-  if (score >= 45) return "Medium";
-  return "Regular";
 }
 
 function hasMissingStats(entry: SharedDraft) {
@@ -388,10 +322,14 @@ async function extractNameFromImage(file: File): Promise<string> {
 export default function RecruitmentPanel({
   initialApplicants,
   initialMigrations,
+  initialApplicantWeights,
+  initialMigrationWeights,
   canManage,
 }: {
   initialApplicants: ApplicantRecord[];
   initialMigrations: MigrationRecord[];
+  initialApplicantWeights: RecruitmentScoreWeights;
+  initialMigrationWeights: RecruitmentScoreWeights;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -407,8 +345,8 @@ export default function RecruitmentPanel({
   const [applicantEditId, setApplicantEditId] = useState<string | null>(null);
   const [migrationEditId, setMigrationEditId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [applicantWeights, setApplicantWeights] = useState<ScoreWeights>(defaultApplicantWeights);
-  const [migrationWeights, setMigrationWeights] = useState<ScoreWeights>(defaultMigrationWeights);
+  const [applicantWeights, setApplicantWeights] = useState<RecruitmentScoreWeights>(initialApplicantWeights);
+  const [migrationWeights, setMigrationWeights] = useState<RecruitmentScoreWeights>(initialMigrationWeights);
   const [expandedRowIds, setExpandedRowIds] = useState<string[]>([]);
   const [applicantSort, setApplicantSort] = useState<{ key: ApplicantSortKey; direction: SortDirection }>({
     key: "score",
@@ -419,37 +357,44 @@ export default function RecruitmentPanel({
     direction: "desc",
   });
   const formPanelRef = useRef<HTMLElement | null>(null);
+  const hasHydratedWeightsRef = useRef(false);
 
   useEffect(() => {
-    try {
-      const applicantSaved = window.localStorage.getItem("recruitmentApplicantWeights");
-      const migrationSaved = window.localStorage.getItem("recruitmentMigrationWeights");
-      if (applicantSaved) {
-        setApplicantWeights({ ...defaultApplicantWeights, ...JSON.parse(applicantSaved) });
+    setApplicantWeights(initialApplicantWeights);
+    setMigrationWeights(initialMigrationWeights);
+  }, [initialApplicantWeights, initialMigrationWeights]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    if (!hasHydratedWeightsRef.current) {
+      hasHydratedWeightsRef.current = true;
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      const scope = tab === "applicants" ? "applicants" : "migrations";
+      const weights = scope === "applicants" ? applicantWeights : migrationWeights;
+      const result = await saveRecruitmentScoringConfig({ scope, weights });
+      if (!result.success) {
+        setMessage({
+          type: "error",
+          text: result.error || "Failed to save recruitment scoring weights.",
+        });
       }
-      if (migrationSaved) {
-        setMigrationWeights({ ...defaultMigrationWeights, ...JSON.parse(migrationSaved) });
-      }
-    } catch {}
-  }, []);
+    }, 400);
 
-  useEffect(() => {
-    window.localStorage.setItem("recruitmentApplicantWeights", JSON.stringify(applicantWeights));
-  }, [applicantWeights]);
-
-  useEffect(() => {
-    window.localStorage.setItem("recruitmentMigrationWeights", JSON.stringify(migrationWeights));
-  }, [migrationWeights]);
+    return () => window.clearTimeout(timeout);
+  }, [applicantWeights, migrationWeights, tab, canManage]);
 
   const applicantRows = useMemo(
     () =>
       applicants
         .map((entry) => {
-          const score = computeScore(entry, applicantWeights);
+          const score = computeRecruitmentScore(entry, applicantWeights);
           return {
             ...entry,
             score,
-            recommendation: recommendation(score),
+            recommendation: getRecommendationBand(score),
             effectiveCategory: "",
             hasWarning: hasMissingStats(entry),
           };
@@ -461,12 +406,12 @@ export default function RecruitmentPanel({
     () =>
       migrations
         .map((entry) => {
-          const score = computeScore(entry, migrationWeights);
+          const score = computeRecruitmentScore(entry, migrationWeights);
           return {
             ...entry,
             score,
-            recommendation: recommendation(score),
-            effectiveCategory: entry.category || categoryFromScore(score),
+            recommendation: getRecommendationBand(score),
+            effectiveCategory: entry.category || getCategoryFromScore(score),
             hasWarning: hasMissingStats(entry),
           };
         })
@@ -500,8 +445,8 @@ export default function RecruitmentPanel({
 
   const currentFormula =
     tab === "applicants"
-      ? formulaLabel("Applicant", applicantWeights)
-      : formulaLabel("Migration", migrationWeights);
+      ? getFormulaLabel("applicants", applicantWeights)
+      : getFormulaLabel("migrations", migrationWeights);
 
   const handleScreenshot = async (file: File) => {
     setIsScanning(true);
@@ -526,14 +471,13 @@ export default function RecruitmentPanel({
         combatPower: 0,
         kills: parsed.kills,
         notes: "",
-        manualAdjustment: 0,
       };
 
       if (tab === "applicants") {
-        setApplicantDraft((prev) => ({ ...prev, ...nextShared, category: "" }));
+        setApplicantDraft((prev) => ({ ...prev, ...nextShared }));
       } else {
-        const nextScore = computeScore(nextShared, migrationWeights);
-        setMigrationDraft((prev) => ({ ...prev, ...nextShared, category: categoryFromScore(nextScore) }));
+        const nextScore = computeRecruitmentScore(nextShared, migrationWeights);
+        setMigrationDraft((prev) => ({ ...prev, ...nextShared, category: getCategoryFromScore(nextScore) }));
       }
 
       setMessage({ type: "success", text: "Screenshot parsed into a draft. Review the fields before saving." });
@@ -613,7 +557,6 @@ export default function RecruitmentPanel({
     setApplicantDraft({
       name: entry.name,
       timezone: entry.timezone,
-      category: entry.category,
       status: entry.status,
       notes: entry.notes,
       techPower: entry.techPower,
@@ -627,7 +570,6 @@ export default function RecruitmentPanel({
       march4Power: entry.march4Power,
       combatPower: entry.combatPower,
       kills: entry.kills,
-      manualAdjustment: 0,
     });
     setMessage({ type: "success", text: `Inline editing applicant: ${entry.name}` });
   };
@@ -655,7 +597,6 @@ export default function RecruitmentPanel({
       march4Power: entry.march4Power,
       combatPower: entry.combatPower,
       kills: entry.kills,
-      manualAdjustment: 0,
     });
     setMessage({ type: "success", text: `Inline editing migration candidate: ${entry.name}` });
   };
@@ -749,17 +690,17 @@ export default function RecruitmentPanel({
             {tab === "applicants" ? "Applicant Scoring Engine" : "Migration Scoring Engine"}
           </h3>
           <div style={{ color: "var(--text-muted)", fontSize: "0.86rem" }}>
-            Adjust the score weights for this tab. Changes are saved in this browser so you can tune the formula live.
+            Adjust the score weights for this tab. Changes auto-save for all leaders and admins so everyone sees the same formula.
           </div>
           <div style={miniStatsGridStyle}>
-            <WeightField label="Troop" value={(tab === "applicants" ? applicantWeights : migrationWeights).troop} onChange={(value) => updateWeights(tab, "troop", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Combat" value={(tab === "applicants" ? applicantWeights : migrationWeights).combat} onChange={(value) => updateWeights(tab, "combat", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Hero" value={(tab === "applicants" ? applicantWeights : migrationWeights).hero} onChange={(value) => updateWeights(tab, "hero", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Tech" value={(tab === "applicants" ? applicantWeights : migrationWeights).tech} onChange={(value) => updateWeights(tab, "tech", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => updateWeights(tab, "kills", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => updateWeights(tab, "structure", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Troop" value={(tab === "applicants" ? applicantWeights : migrationWeights).troop} onChange={(value) => handleWeightChange(tab, "troop", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Combat" value={(tab === "applicants" ? applicantWeights : migrationWeights).combat} onChange={(value) => handleWeightChange(tab, "combat", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Hero" value={(tab === "applicants" ? applicantWeights : migrationWeights).hero} onChange={(value) => handleWeightChange(tab, "hero", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Tech" value={(tab === "applicants" ? applicantWeights : migrationWeights).tech} onChange={(value) => handleWeightChange(tab, "tech", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => handleWeightChange(tab, "kills", value, setApplicantWeights, setMigrationWeights)} />
+            <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => handleWeightChange(tab, "structure", value, setApplicantWeights, setMigrationWeights)} />
             {tab === "migrations" && (
-              <WeightField label="Mod Vehicle" value={migrationWeights.modVehicle} onChange={(value) => updateWeights("migrations", "modVehicle", value, setApplicantWeights, setMigrationWeights)} />
+              <WeightField label="Mod Vehicle" value={migrationWeights.modVehicle} onChange={(value) => handleWeightChange("migrations", "modVehicle", value, setApplicantWeights, setMigrationWeights)} />
             )}
           </div>
           <div
@@ -856,7 +797,7 @@ export default function RecruitmentPanel({
             )}
             <div className="flex-row justify-between gap-3" style={{ flexWrap: "wrap" }}>
               <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
-                Current score: {tab === "applicants" ? computeScore(applicantDraft, applicantWeights).toFixed(2) : computeScore(migrationDraft, migrationWeights).toFixed(2)}
+                Current score: {tab === "applicants" ? computeRecruitmentScore(applicantDraft, applicantWeights).toFixed(2) : computeRecruitmentScore(migrationDraft, migrationWeights).toFixed(2)}
               </div>
               <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
                 <button
@@ -1079,8 +1020,8 @@ export default function RecruitmentPanel({
                                   </div>
                                   <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
                                     Live score: {tab === "applicants"
-                                      ? computeScore(applicantDraft, applicantWeights).toFixed(2)
-                                      : computeScore(migrationDraft, migrationWeights).toFixed(2)}
+                                      ? computeRecruitmentScore(applicantDraft, applicantWeights).toFixed(2)
+                                      : computeRecruitmentScore(migrationDraft, migrationWeights).toFixed(2)}
                                   </div>
                                 </div>
                                 {tab === "applicants" ? (
@@ -1336,25 +1277,12 @@ function WeightField({
   );
 }
 
-function formulaLabel(label: string, weights: ScoreWeights) {
-  const parts = [
-    `Troop x ${weights.troop.toFixed(2)}`,
-    `Combat x ${weights.combat.toFixed(2)}`,
-    `Hero x ${weights.hero.toFixed(2)}`,
-    `Tech x ${weights.tech.toFixed(2)}`,
-    `Kills x ${weights.kills.toFixed(2)}`,
-    weights.modVehicle > 0 ? `Mod Vehicle x ${weights.modVehicle.toFixed(2)}` : null,
-    `Structure x ${weights.structure.toFixed(2)}`,
-  ].filter(Boolean);
-  return `${label} Score = ${parts.join(" + ")}`;
-}
-
-function updateWeights(
+function handleWeightChange(
   tab: "applicants" | "migrations",
-  key: keyof ScoreWeights,
+  key: keyof RecruitmentScoreWeights,
   value: number,
-  setApplicantWeights: Dispatch<SetStateAction<ScoreWeights>>,
-  setMigrationWeights: Dispatch<SetStateAction<ScoreWeights>>
+  setApplicantWeights: Dispatch<SetStateAction<RecruitmentScoreWeights>>,
+  setMigrationWeights: Dispatch<SetStateAction<RecruitmentScoreWeights>>
 ) {
   if (tab === "applicants") {
     setApplicantWeights((prev) => {
