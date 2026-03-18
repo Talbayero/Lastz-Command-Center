@@ -68,6 +68,35 @@ type SharedDraft = {
 const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"];
 const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"];
 const migrationContactStatuses = ["Not Contacted", "Contacted", "In Discussion", "Follow Up", "Closed"];
+const timezoneOptions = [
+  "UTC-12",
+  "UTC-11",
+  "UTC-10",
+  "UTC-9",
+  "UTC-8",
+  "UTC-7",
+  "UTC-6",
+  "UTC-5",
+  "UTC-4",
+  "UTC-3",
+  "UTC-2",
+  "UTC-1",
+  "UTC+0",
+  "UTC+1",
+  "UTC+2",
+  "UTC+3",
+  "UTC+4",
+  "UTC+5",
+  "UTC+6",
+  "UTC+7",
+  "UTC+8",
+  "UTC+9",
+  "UTC+10",
+  "UTC+11",
+  "UTC+12",
+  "UTC+13",
+  "UTC+14",
+];
 
 const emptySharedDraft: SharedDraft = {
   name: "",
@@ -84,7 +113,7 @@ const emptySharedDraft: SharedDraft = {
 
 const emptyApplicantDraft = {
   ...emptySharedDraft,
-  timezone: "",
+  timezone: "UTC-6",
   status: "New",
 };
 
@@ -598,7 +627,15 @@ function ApplicantForm({ draft, setDraft }: any) {
   return (
     <div className="profile-form-grid">
       <LabeledField label="Player Name"><input className="cyber-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></LabeledField>
-      <LabeledField label="Timezone"><input className="cyber-input" value={draft.timezone} onChange={(e) => setDraft({ ...draft, timezone: e.target.value })} /></LabeledField>
+      <LabeledField label="Timezone">
+        <select className="cyber-input" value={draft.timezone} onChange={(e) => setDraft({ ...draft, timezone: e.target.value })}>
+          {timezoneOptions.map((timezone) => (
+            <option key={timezone} value={timezone}>
+              {timezone}
+            </option>
+          ))}
+        </select>
+      </LabeledField>
       <LabeledField label="Status">
         <select className="cyber-input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
           {applicantStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
