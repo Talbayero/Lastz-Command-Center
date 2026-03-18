@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
-import { LayoutGrid, Table2, Upload, Trash2 } from "lucide-react";
+import { LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
 import { parseLastZProfile } from "@/utils/ocrParser";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 import {
@@ -568,7 +568,9 @@ export default function RecruitmentPanel({
                     {canManage && (
                       <BodyCell>
                         <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
-                          <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))}>Edit</button>
+                          <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))} aria-label="Edit record">
+                            <Pencil size={14} />
+                          </button>
                           <button className="cyber-button" style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }} onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}>
                             <Trash2 size={14} />
                           </button>
@@ -609,7 +611,9 @@ export default function RecruitmentPanel({
               <div style={{ color: "var(--text-muted)", fontSize: "0.84rem" }}>{row.notes || "No notes yet."}</div>
               {canManage && (
                 <div className="flex-row justify-between gap-2" style={{ flexWrap: "wrap" }}>
-                  <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))}>Edit</button>
+                  <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))} aria-label="Edit record">
+                    <Pencil size={14} />
+                  </button>
                   <button className="cyber-button" style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }} onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}>
                     Remove
                   </button>
