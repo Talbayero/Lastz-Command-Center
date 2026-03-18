@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import prisma from "@/utils/db";
 import { requirePermission } from "@/utils/auth";
 
-export const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"] as const;
-export const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"] as const;
-export const migrationContactStatuses = ["Not Contacted", "Contacted", "In Discussion", "Follow Up", "Closed"] as const;
-export const recruitmentCategories = ["Elite", "Advanced", "Medium", "Regular"] as const;
+const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"] as const;
+const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"] as const;
+const migrationContactStatuses = ["Not Contacted", "Contacted", "In Discussion", "Follow Up", "Closed"] as const;
+const recruitmentCategories = ["Elite", "Advanced", "Medium", "Regular"] as const;
 
 export type RecruitmentStatInput = {
   name: string;
