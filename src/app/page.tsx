@@ -95,6 +95,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     rank: number | null;
   }> = [];
   let duelLoadError: string | null = null;
+  let recruitmentLoadError: string | null = null;
   let profileData: any = null;
   let recruitmentApplicants: any[] = [];
   let recruitmentMigrations: any[] = [];
@@ -123,10 +124,15 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   }
 
   if (shouldLoadRecruitmentData) {
-    [recruitmentApplicants, recruitmentMigrations] = await Promise.all([
-      prisma.allianceApplicant.findMany({ orderBy: { updatedAt: "desc" } }),
-      prisma.migrationCandidate.findMany({ orderBy: { updatedAt: "desc" } }),
-    ]);
+    try {
+      [recruitmentApplicants, recruitmentMigrations] = await Promise.all([
+        prisma.allianceApplicant.findMany({ orderBy: { updatedAt: "desc" } }),
+        prisma.migrationCandidate.findMany({ orderBy: { updatedAt: "desc" } }),
+      ]);
+    } catch (error: any) {
+      console.error("RECRUITMENT PAGE LOAD ERROR:", error);
+      recruitmentLoadError = "Recruitment data is temporarily unavailable. Refresh in a moment and try again.";
+    }
   }
 
   if (currentView === "profile") {
@@ -313,19 +319,35 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
             ) : currentView === "overview" ? (
               <AllianceOverview players={rosterData} bugs={bugData} />
             ) : currentView === "recruitment" ? (
-              <RecruitmentPanel
-                initialApplicants={recruitmentApplicants.map((entry) => ({
-                  ...entry,
-                  createdAt: entry.createdAt.toISOString(),
-                  updatedAt: entry.updatedAt.toISOString(),
-                }))}
-                initialMigrations={recruitmentMigrations.map((entry) => ({
-                  ...entry,
-                  createdAt: entry.createdAt.toISOString(),
-                  updatedAt: entry.updatedAt.toISOString(),
-                }))}
-                canManage={canManageRecruitment}
-              />
+              recruitmentLoadError ? (
+                <div
+                  style={{
+                    padding: "1rem 1.1rem",
+                    borderRadius: "6px",
+                    border: "1px solid var(--accent-red)",
+                    backgroundColor: "rgba(255,51,102,0.08)",
+                    color: "var(--accent-red)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  {recruitmentLoadError}
+                </div>
+              ) : (
+                <RecruitmentPanel
+                  initialApplicants={recruitmentApplicants.map((entry) => ({
+                    ...entry,
+                    createdAt: entry.createdAt.toISOString(),
+                    updatedAt: entry.updatedAt.toISOString(),
+                  }))}
+                  initialMigrations={recruitmentMigrations.map((entry) => ({
+                    ...entry,
+                    createdAt: entry.createdAt.toISOString(),
+                    updatedAt: entry.updatedAt.toISOString(),
+                  }))}
+                  canManage={canManageRecruitment}
+                />
+              )
             ) : currentView === "duel" ? (
               duelLoadError ? (
                 <div
