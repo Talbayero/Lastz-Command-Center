@@ -315,7 +315,7 @@ export default function ProfilePanel({
                   Hello!
                 </div>
                 <div className="mith-avatar-core" style={mithAvatarStyle}>
-                  <div style={mithImageFrameStyle}>
+                  <div className="mith-avatar-frame" style={mithImageFrameStyle}>
                     <Image
                       src="/mith-avatar.png"
                       alt="Mith hologram avatar"
