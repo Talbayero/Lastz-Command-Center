@@ -587,6 +587,7 @@ export default function RecruitmentPanel({
 
   const editApplicant = (entry: ApplicantRecord) => {
     setApplicantEditId(entry.id);
+    setExpandedRowIds((prev) => (prev.includes(entry.id) ? prev : [...prev, entry.id]));
     setApplicantDraft({
       name: entry.name,
       timezone: entry.timezone,
@@ -606,14 +607,12 @@ export default function RecruitmentPanel({
       kills: entry.kills,
       manualAdjustment: 0,
     });
-    setMessage({ type: "success", text: `Editing applicant: ${entry.name}` });
-    window.requestAnimationFrame(() => {
-      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setMessage({ type: "success", text: `Inline editing applicant: ${entry.name}` });
   };
 
   const editMigration = (entry: MigrationRecord) => {
     setMigrationEditId(entry.id);
+    setExpandedRowIds((prev) => (prev.includes(entry.id) ? prev : [...prev, entry.id]));
     setMigrationDraft({
       name: entry.name,
       originalServer: entry.originalServer,
@@ -636,10 +635,7 @@ export default function RecruitmentPanel({
       kills: entry.kills,
       manualAdjustment: 0,
     });
-    setMessage({ type: "success", text: `Editing migration candidate: ${entry.name}` });
-    window.requestAnimationFrame(() => {
-      formPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setMessage({ type: "success", text: `Inline editing migration candidate: ${entry.name}` });
   };
 
   const removeApplicant = (id: string) => {
@@ -666,6 +662,16 @@ export default function RecruitmentPanel({
         setMessage({ type: "error", text: result.error || "Failed to remove migration candidate." });
       }
     });
+  };
+
+  const clearInlineEdit = () => {
+    if (tab === "applicants") {
+      setApplicantDraft(emptyApplicantDraft);
+      setApplicantEditId(null);
+    } else {
+      setMigrationDraft(emptyMigrationDraft);
+      setMigrationEditId(null);
+    }
   };
 
   const toggleSort = (key: ApplicantSortKey | MigrationSortKey) => {
@@ -1024,6 +1030,38 @@ export default function RecruitmentPanel({
                               Notes: {row.notes}
                             </div>
                           )}
+                          {canManage &&
+                            ((tab === "applicants" && applicantEditId === row.id) ||
+                              (tab === "migrations" && migrationEditId === row.id)) && (
+                              <div
+                                className="cyber-card flex-col gap-4"
+                                style={{ marginTop: "1rem", padding: "1rem", backgroundColor: "rgba(0, 255, 231, 0.03)" }}
+                              >
+                                <div className="flex-row justify-between gap-3" style={{ flexWrap: "wrap", alignItems: "center" }}>
+                                  <div style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)", fontSize: "0.85rem" }}>
+                                    Inline editing: {row.name}
+                                  </div>
+                                  <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
+                                    Live score: {tab === "applicants"
+                                      ? computeScore(applicantDraft, applicantWeights).toFixed(2)
+                                      : computeScore(migrationDraft, migrationWeights).toFixed(2)}
+                                  </div>
+                                </div>
+                                {tab === "applicants" ? (
+                                  <ApplicantForm draft={applicantDraft} setDraft={setApplicantDraft} />
+                                ) : (
+                                  <MigrationForm draft={migrationDraft} setDraft={setMigrationDraft} />
+                                )}
+                                <div className="flex-row justify-end gap-2" style={{ flexWrap: "wrap" }}>
+                                  <button className="cyber-button" onClick={clearInlineEdit}>
+                                    Cancel
+                                  </button>
+                                  <button className="cyber-button primary" onClick={saveCurrent} disabled={isPending}>
+                                    {isPending ? "Saving..." : "Save Changes"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                         </td>
                       </tr>
                     )}
