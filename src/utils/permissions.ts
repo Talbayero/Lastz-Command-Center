@@ -1,9 +1,11 @@
 export const permissionLabels = {
   viewDashboard: "View Alliance Dashboard",
+  viewRecruitment: "View Recruitment",
   viewAllianceDuel: "View Alliance Duel",
   uploadProfile: "Upload Profile",
   editRoster: "Edit Roster",
   exportRoster: "Export Roster",
+  manageRecruitment: "Manage Recruitment",
   manageAllianceDuel: "Manage Alliance Duel",
   deleteRosterMembers: "Delete Roster Members",
   editPlayerNames: "Edit Player Names",
@@ -20,10 +22,12 @@ export const permissionKeys = Object.keys(permissionLabels) as PermissionKey[];
 
 export const emptyPermissions = (): RolePermissions => ({
   viewDashboard: false,
+  viewRecruitment: false,
   viewAllianceDuel: false,
   uploadProfile: false,
   editRoster: false,
   exportRoster: false,
+  manageRecruitment: false,
   manageAllianceDuel: false,
   deleteRosterMembers: false,
   editPlayerNames: false,

@@ -465,10 +465,12 @@ function emptyRolePermissions(): RolePermissions {
   return {
     viewDashboard: false,
     viewAllianceDuel: false,
+    viewRecruitment: false,
     uploadProfile: false,
     editRoster: false,
     exportRoster: false,
     manageAllianceDuel: false,
+    manageRecruitment: false,
     deleteRosterMembers: false,
     editPlayerNames: false,
     manageBugs: false,

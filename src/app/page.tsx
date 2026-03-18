@@ -8,6 +8,7 @@ import Roster from "@/components/Roster";
 import BugList from "@/components/BugList";
 import AllianceOverview from "@/components/AllianceOverview";
 import AllianceDuelPanel from "@/components/AllianceDuelPanel";
+import RecruitmentPanel from "@/components/RecruitmentPanel";
 import AuthPanel from "@/components/AuthPanel";
 import AdminPanel from "@/components/AdminPanel";
 import ProfilePanel from "@/components/ProfilePanel";
@@ -33,6 +34,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   }
 
   const canViewOverview = hasPermission(currentUser, "viewAllianceOverview");
+  const canViewRecruitment = hasPermission(currentUser, "viewRecruitment");
+  const canManageRecruitment = hasPermission(currentUser, "manageRecruitment");
   const canViewAllianceDuel = hasPermission(currentUser, "viewAllianceDuel");
   const canManageAllianceDuel = hasPermission(currentUser, "manageAllianceDuel");
   const canViewDashboard = hasPermission(currentUser, "viewDashboard");
@@ -44,6 +47,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const availableViews = [
     "profile",
     canViewOverview ? "overview" : null,
+    canViewRecruitment ? "recruitment" : null,
     canViewAllianceDuel ? "duel" : null,
     canViewDashboard ? "performance" : null,
     canViewDashboard ? "roster" : null,
@@ -53,6 +57,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const currentView = availableViews.includes(requestedView) ? requestedView : availableViews[0] || "performance";
   const shouldLoadDuelData = currentView === "duel" && canViewAllianceDuel;
+  const shouldLoadRecruitmentData = currentView === "recruitment" && canViewRecruitment;
   const profileTargetName = currentView === "profile" ? targetName || currentUser.playerName : undefined;
 
   const [allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
@@ -91,6 +96,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   }> = [];
   let duelLoadError: string | null = null;
   let profileData: any = null;
+  let recruitmentApplicants: any[] = [];
+  let recruitmentMigrations: any[] = [];
 
   if (shouldLoadDuelData) {
     try {
@@ -113,6 +120,13 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
       console.error("ALLIANCE DUEL PAGE LOAD ERROR:", error);
       duelLoadError = "Alliance Duel data is temporarily unavailable. Refresh in a moment and try again.";
     }
+  }
+
+  if (shouldLoadRecruitmentData) {
+    [recruitmentApplicants, recruitmentMigrations] = await Promise.all([
+      prisma.allianceApplicant.findMany({ orderBy: { updatedAt: "desc" } }),
+      prisma.migrationCandidate.findMany({ orderBy: { updatedAt: "desc" } }),
+    ]);
   }
 
   if (currentView === "profile") {
@@ -227,6 +241,11 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
               Overview
             </Link>
           )}
+          {canViewRecruitment && (
+            <Link href="/?view=recruitment" className={`cyber-button ${currentView === "recruitment" ? "primary" : ""}`} style={tabLinkStyle}>
+              Recruitment
+            </Link>
+          )}
           {canViewAllianceDuel && (
             <Link href="/?view=duel" className={`cyber-button ${currentView === "duel" ? "primary" : ""}`} style={tabLinkStyle}>
               Alliance Duel
@@ -263,6 +282,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                 ? "PLAYER PROFILE"
                 : currentView === "overview"
                   ? "ALLIANCE ANALYTICS"
+                : currentView === "recruitment"
+                  ? "RECRUITMENT COMMAND"
                 : currentView === "duel"
                   ? "ALLIANCE DUEL MAINTENANCE"
                 : currentView === "performance"
@@ -291,6 +312,20 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
               )
             ) : currentView === "overview" ? (
               <AllianceOverview players={rosterData} bugs={bugData} />
+            ) : currentView === "recruitment" ? (
+              <RecruitmentPanel
+                initialApplicants={recruitmentApplicants.map((entry) => ({
+                  ...entry,
+                  createdAt: entry.createdAt.toISOString(),
+                  updatedAt: entry.updatedAt.toISOString(),
+                }))}
+                initialMigrations={recruitmentMigrations.map((entry) => ({
+                  ...entry,
+                  createdAt: entry.createdAt.toISOString(),
+                  updatedAt: entry.updatedAt.toISOString(),
+                }))}
+                canManage={canManageRecruitment}
+              />
             ) : currentView === "duel" ? (
               duelLoadError ? (
                 <div

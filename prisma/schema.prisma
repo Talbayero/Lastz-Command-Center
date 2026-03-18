@@ -91,6 +91,45 @@ model UserSession {
   @@index([userId])
 }
 
+model AllianceApplicant {
+  id              String   @id @default(cuid())
+  name            String
+  timezone        String   @default("")
+  status          String   @default("New")
+  notes           String   @default("")
+  techPower       Int      @default(0)
+  heroPower       Int      @default(0)
+  troopPower      Int      @default(0)
+  modVehiclePower Int      @default(0)
+  structurePower  Int      @default(0)
+  combatPower     Int      @default(0)
+  kills           Int      @default(0)
+  manualAdjustment Int     @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model MigrationCandidate {
+  id              String   @id @default(cuid())
+  name            String
+  originalServer  String
+  originalAlliance String
+  reasonForLeaving String  @default("")
+  contactStatus   String   @default("Scouted")
+  status          String   @default("Scouted")
+  notes           String   @default("")
+  techPower       Int      @default(0)
+  heroPower       Int      @default(0)
+  troopPower      Int      @default(0)
+  modVehiclePower Int      @default(0)
+  structurePower  Int      @default(0)
+  combatPower     Int      @default(0)
+  kills           Int      @default(0)
+  manualAdjustment Int     @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 model AllianceDuelRequirement {
   id           String   @id @default(cuid())
   dayKey        String   @unique

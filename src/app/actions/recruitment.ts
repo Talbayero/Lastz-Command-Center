@@ -1,0 +1,246 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import prisma from "@/utils/db";
+import { requirePermission } from "@/utils/auth";
+
+export const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"] as const;
+export const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"] as const;
+export const migrationContactStatuses = ["Not Contacted", "Contacted", "In Discussion", "Follow Up", "Closed"] as const;
+
+export type RecruitmentStatInput = {
+  name: string;
+  techPower: number;
+  heroPower: number;
+  troopPower: number;
+  modVehiclePower: number;
+  structurePower: number;
+  combatPower: number;
+  kills: number;
+  notes: string;
+  manualAdjustment: number;
+};
+
+export type ApplicantInput = RecruitmentStatInput & {
+  id?: string;
+  timezone: string;
+  status: string;
+};
+
+export type MigrationCandidateInput = RecruitmentStatInput & {
+  id?: string;
+  originalServer: string;
+  originalAlliance: string;
+  reasonForLeaving: string;
+  contactStatus: string;
+  status: string;
+};
+
+function normalizeInt(value: unknown) {
+  return Math.max(0, Math.round(Number(value) || 0));
+}
+
+function normalizeSignedInt(value: unknown) {
+  return Math.round(Number(value) || 0);
+}
+
+function applicantScore(input: RecruitmentStatInput) {
+  const millions = {
+    troop: normalizeInt(input.troopPower) / 1_000_000,
+    combat: normalizeInt(input.combatPower) / 1_000_000,
+    hero: normalizeInt(input.heroPower) / 1_000_000,
+    tech: normalizeInt(input.techPower) / 1_000_000,
+    kills: normalizeInt(input.kills) / 1_000_000,
+    structure: normalizeInt(input.structurePower) / 1_000_000,
+  };
+
+  return Number(
+    (
+      millions.troop * 0.4 +
+      millions.combat * 0.2 +
+      millions.hero * 0.15 +
+      millions.tech * 0.1 +
+      millions.kills * 0.1 +
+      millions.structure * 0.05 +
+      normalizeSignedInt(input.manualAdjustment)
+    ).toFixed(2)
+  );
+}
+
+function migrationScore(input: RecruitmentStatInput) {
+  const millions = {
+    troop: normalizeInt(input.troopPower) / 1_000_000,
+    combat: normalizeInt(input.combatPower) / 1_000_000,
+    hero: normalizeInt(input.heroPower) / 1_000_000,
+    tech: normalizeInt(input.techPower) / 1_000_000,
+    kills: normalizeInt(input.kills) / 1_000_000,
+    structure: normalizeInt(input.structurePower) / 1_000_000,
+    modVehicle: normalizeInt(input.modVehiclePower) / 1_000_000,
+  };
+
+  return Number(
+    (
+      millions.troop * 0.3 +
+      millions.combat * 0.25 +
+      millions.hero * 0.15 +
+      millions.tech * 0.1 +
+      millions.kills * 0.1 +
+      millions.modVehicle * 0.05 +
+      millions.structure * 0.05 +
+      normalizeSignedInt(input.manualAdjustment)
+    ).toFixed(2)
+  );
+}
+
+export function getApplicantFormulaLabel() {
+  return "Score = Troop x 0.40 + Combat x 0.20 + Hero x 0.15 + Tech x 0.10 + Kills x 0.10 + Structure x 0.05 + Manual Adjustment";
+}
+
+export function getMigrationFormulaLabel() {
+  return "Score = Troop x 0.30 + Combat x 0.25 + Hero x 0.15 + Tech x 0.10 + Kills x 0.10 + Mod Vehicle x 0.05 + Structure x 0.05 + Manual Adjustment";
+}
+
+export function getRecommendationBand(score: number) {
+  if (score >= 90) return "Strong Fit";
+  if (score >= 55) return "Borderline";
+  return "Low Priority";
+}
+
+export async function saveApplicant(input: ApplicantInput) {
+  try {
+    await requirePermission("manageRecruitment");
+
+    const name = input.name.trim();
+    if (!name) {
+      return { success: false, error: "Player name is required." };
+    }
+
+    if (!applicantStatuses.includes(input.status as (typeof applicantStatuses)[number])) {
+      return { success: false, error: "Invalid applicant status." };
+    }
+
+    const data = {
+      name,
+      timezone: input.timezone.trim(),
+      status: input.status,
+      notes: input.notes.trim(),
+      techPower: normalizeInt(input.techPower),
+      heroPower: normalizeInt(input.heroPower),
+      troopPower: normalizeInt(input.troopPower),
+      modVehiclePower: normalizeInt(input.modVehiclePower),
+      structurePower: normalizeInt(input.structurePower),
+      combatPower: normalizeInt(input.combatPower),
+      kills: normalizeInt(input.kills),
+      manualAdjustment: normalizeSignedInt(input.manualAdjustment),
+    };
+
+    if (input.id) {
+      await prisma.allianceApplicant.update({
+        where: { id: input.id },
+        data,
+      });
+    } else {
+      await prisma.allianceApplicant.create({ data });
+    }
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("SAVE APPLICANT ERROR:", error);
+    return { success: false, error: error.message || "Failed to save applicant." };
+  }
+}
+
+export async function saveMigrationCandidate(input: MigrationCandidateInput) {
+  try {
+    await requirePermission("manageRecruitment");
+
+    const name = input.name.trim();
+    if (!name) {
+      return { success: false, error: "Player name is required." };
+    }
+
+    if (!migrationStatuses.includes(input.status as (typeof migrationStatuses)[number])) {
+      return { success: false, error: "Invalid migration status." };
+    }
+
+    if (!migrationContactStatuses.includes(input.contactStatus as (typeof migrationContactStatuses)[number])) {
+      return { success: false, error: "Invalid contact status." };
+    }
+
+    const data = {
+      name,
+      originalServer: input.originalServer.trim(),
+      originalAlliance: input.originalAlliance.trim(),
+      reasonForLeaving: input.reasonForLeaving.trim(),
+      contactStatus: input.contactStatus,
+      status: input.status,
+      notes: input.notes.trim(),
+      techPower: normalizeInt(input.techPower),
+      heroPower: normalizeInt(input.heroPower),
+      troopPower: normalizeInt(input.troopPower),
+      modVehiclePower: normalizeInt(input.modVehiclePower),
+      structurePower: normalizeInt(input.structurePower),
+      combatPower: normalizeInt(input.combatPower),
+      kills: normalizeInt(input.kills),
+      manualAdjustment: normalizeSignedInt(input.manualAdjustment),
+    };
+
+    if (input.id) {
+      await prisma.migrationCandidate.update({
+        where: { id: input.id },
+        data,
+      });
+    } else {
+      await prisma.migrationCandidate.create({ data });
+    }
+
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("SAVE MIGRATION CANDIDATE ERROR:", error);
+    return { success: false, error: error.message || "Failed to save migration candidate." };
+  }
+}
+
+export async function deleteApplicant(input: { id: string }) {
+  try {
+    await requirePermission("manageRecruitment");
+    await prisma.allianceApplicant.delete({ where: { id: input.id } });
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("DELETE APPLICANT ERROR:", error);
+    return { success: false, error: error.message || "Failed to delete applicant." };
+  }
+}
+
+export async function deleteMigrationCandidate(input: { id: string }) {
+  try {
+    await requirePermission("manageRecruitment");
+    await prisma.migrationCandidate.delete({ where: { id: input.id } });
+    revalidatePath("/");
+    return { success: true };
+  } catch (error: any) {
+    console.error("DELETE MIGRATION CANDIDATE ERROR:", error);
+    return { success: false, error: error.message || "Failed to delete migration candidate." };
+  }
+}
+
+export function enrichApplicantRecord<T extends ApplicantInput & { id: string; createdAt?: Date; updatedAt?: Date }>(entry: T) {
+  const score = applicantScore(entry);
+  return {
+    ...entry,
+    score,
+    recommendation: getRecommendationBand(score),
+  };
+}
+
+export function enrichMigrationRecord<T extends MigrationCandidateInput & { id: string; createdAt?: Date; updatedAt?: Date }>(entry: T) {
+  const score = migrationScore(entry);
+  return {
+    ...entry,
+    score,
+    recommendation: getRecommendationBand(score),
+  };
+}
