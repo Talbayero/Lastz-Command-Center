@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Bot, Sparkles } from "lucide-react";
 import OcrUploader from "@/components/OcrUploader";
 import { saveProfileData, saveProfileLeaderNotes } from "@/app/actions/profile";
 
@@ -327,6 +327,60 @@ export default function ProfilePanel({
         </section>
 
         <div className="flex-col gap-4">
+          <section className="cyber-card flex-col gap-4">
+            <div className="flex-row justify-between gap-4" style={{ alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <h3 style={{ color: "var(--accent-purple)" }}>Mith Tactical Advisor</h3>
+                <p style={{ color: "var(--text-muted)", fontSize: "0.86rem" }}>
+                  Friendly co-pilot guidance based on your current gap versus the alliance average.
+                </p>
+              </div>
+              <div style={mithAvatarWrapStyle}>
+                <div style={mithAvatarGlowStyle} />
+                <div style={mithAvatarStyle}>
+                  <Bot size={22} />
+                  <span style={{ fontSize: "0.72rem", letterSpacing: "0.12em" }}>MITH</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={mithOverlayStyle}>
+              <div style={mithStatusRowStyle}>
+                <span style={mithPillStyle}>
+                  <Sparkles size={12} />
+                  CO-PILOT ONLINE
+                </span>
+                <span style={{ color: "var(--text-muted)", fontSize: "0.78rem", fontFamily: "var(--font-mono)" }}>
+                  Hologram advisory layer
+                </span>
+              </div>
+
+              {improvementRecommendations.length === 0 ? (
+                <div style={mithBubbleStyle}>
+                  You are holding strong across the tracked stats. Keep your uploads current and focus on maintaining consistency.
+                </div>
+              ) : (
+                <div className="flex-col gap-3">
+                  <div style={mithBubbleStyle}>
+                    Primary focus: <strong>{improvementRecommendations[0].label}</strong>. That is your biggest gap against the alliance average right now.
+                  </div>
+                  {improvementRecommendations.map((entry, index) => (
+                    <div key={entry.label} style={mithTipStyle}>
+                      <div style={mithTipIndexStyle}>0{index + 1}</div>
+                      <div className="flex-col gap-1">
+                        <div style={{ color: "var(--text-main)", fontWeight: 700 }}>{entry.label}</div>
+                        <div style={{ color: "var(--text-muted)", fontSize: "0.84rem" }}>{entry.suggestion}</div>
+                        <div style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
+                          Gap: {entry.gap.toLocaleString()} ({Math.max(0, Math.round(entry.percentBehind))}% below average)
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
           {canEditProfile && <OcrUploader initialName={profile.name} lockName />}
           {canManageNotes && (
             <section className="cyber-card flex-col gap-4">
@@ -430,4 +484,107 @@ const recommendationRowStyle: React.CSSProperties = {
   flexWrap: "wrap",
   paddingBottom: "0.85rem",
   borderBottom: "1px solid rgba(255,255,255,0.06)",
+};
+
+const mithAvatarWrapStyle: React.CSSProperties = {
+  position: "relative",
+  width: "90px",
+  height: "90px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const mithAvatarGlowStyle: React.CSSProperties = {
+  position: "absolute",
+  inset: "10px",
+  borderRadius: "50%",
+  background:
+    "radial-gradient(circle, rgba(0,255,204,0.35) 0%, rgba(0,255,204,0.08) 45%, rgba(176,38,255,0.18) 75%, transparent 100%)",
+  filter: "blur(4px)",
+};
+
+const mithAvatarStyle: React.CSSProperties = {
+  position: "relative",
+  width: "72px",
+  height: "72px",
+  borderRadius: "50%",
+  border: "1px solid rgba(0,255,204,0.65)",
+  background:
+    "linear-gradient(180deg, rgba(0,255,204,0.14) 0%, rgba(176,38,255,0.16) 100%)",
+  boxShadow: "0 0 18px rgba(0,255,204,0.22)",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "0.2rem",
+  color: "var(--accent-neon)",
+  fontFamily: "var(--font-mono)",
+  textTransform: "uppercase",
+};
+
+const mithOverlayStyle: React.CSSProperties = {
+  position: "relative",
+  padding: "1rem",
+  borderRadius: "8px",
+  border: "1px solid rgba(0,255,204,0.25)",
+  background:
+    "linear-gradient(180deg, rgba(0,255,204,0.06) 0%, rgba(176,38,255,0.08) 100%)",
+  overflow: "hidden",
+};
+
+const mithStatusRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+  marginBottom: "0.9rem",
+};
+
+const mithPillStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  padding: "0.35rem 0.65rem",
+  borderRadius: "999px",
+  border: "1px solid rgba(0,255,204,0.4)",
+  color: "var(--accent-neon)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "0.72rem",
+  letterSpacing: "0.08em",
+};
+
+const mithBubbleStyle: React.CSSProperties = {
+  padding: "0.9rem 1rem",
+  borderRadius: "8px",
+  border: "1px solid rgba(0,255,204,0.2)",
+  backgroundColor: "rgba(9, 20, 28, 0.72)",
+  color: "var(--text-main)",
+  lineHeight: 1.6,
+};
+
+const mithTipStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "0.85rem",
+  padding: "0.85rem 0.95rem",
+  borderRadius: "8px",
+  border: "1px solid rgba(255,255,255,0.06)",
+  backgroundColor: "rgba(20,20,23,0.75)",
+};
+
+const mithTipIndexStyle: React.CSSProperties = {
+  minWidth: "34px",
+  height: "34px",
+  borderRadius: "50%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "1px solid rgba(176,38,255,0.55)",
+  color: "var(--accent-purple)",
+  fontFamily: "var(--font-mono)",
+  fontWeight: 700,
+  fontSize: "0.78rem",
+  boxShadow: "0 0 12px rgba(176,38,255,0.15)",
 };
