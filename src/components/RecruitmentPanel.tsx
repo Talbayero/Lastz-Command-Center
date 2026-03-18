@@ -763,7 +763,7 @@ export default function RecruitmentPanel({
           <MiniMetric label="Borderline" value={String(summaryRows.borderline)} />
           <MiniMetric label="Low Priority" value={String(summaryRows.lowPriority)} />
         </div>
-        {tab === "migrations" && (
+        {tab === "migrations" && summaryRows.byCategory.length > 0 && (
           <div className="responsive-table" style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "360px" }}>
               <thead style={{ backgroundColor: "var(--bg-dark)" }}>
