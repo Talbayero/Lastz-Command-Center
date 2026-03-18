@@ -547,12 +547,21 @@ export default function RecruitmentPanel({
           setMessage({ type: "error", text: result.error || "Failed to save applicant." });
           return;
         }
+        const record = result.record;
         const nextEntry = {
           ...(applicantEditId
             ? applicants.find((entry) => entry.id === applicantEditId)!
             : { id: `temp-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
-          ...applicantDraft,
-          updatedAt: new Date().toISOString(),
+          ...(record
+            ? {
+                ...record,
+                createdAt: new Date(record.createdAt).toISOString(),
+                updatedAt: new Date(record.updatedAt).toISOString(),
+              }
+            : {
+                ...applicantDraft,
+                updatedAt: new Date().toISOString(),
+              }),
         };
         setApplicants((prev) =>
           applicantEditId ? prev.map((entry) => (entry.id === applicantEditId ? nextEntry : entry)) : [nextEntry, ...prev]
@@ -560,19 +569,27 @@ export default function RecruitmentPanel({
         setApplicantDraft(emptyApplicantDraft);
         setApplicantEditId(null);
         setMessage({ type: "success", text: "Applicant saved." });
-        router.refresh();
       } else {
         const result = await saveMigrationCandidate({ id: migrationEditId ?? undefined, ...migrationDraft });
         if (!result.success) {
           setMessage({ type: "error", text: result.error || "Failed to save migration candidate." });
           return;
         }
+        const record = result.record;
         const nextEntry = {
           ...(migrationEditId
             ? migrations.find((entry) => entry.id === migrationEditId)!
             : { id: `temp-${Date.now()}`, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
-          ...migrationDraft,
-          updatedAt: new Date().toISOString(),
+          ...(record
+            ? {
+                ...record,
+                createdAt: new Date(record.createdAt).toISOString(),
+                updatedAt: new Date(record.updatedAt).toISOString(),
+              }
+            : {
+                ...migrationDraft,
+                updatedAt: new Date().toISOString(),
+              }),
         };
         setMigrations((prev) =>
           migrationEditId ? prev.map((entry) => (entry.id === migrationEditId ? nextEntry : entry)) : [nextEntry, ...prev]
@@ -580,7 +597,6 @@ export default function RecruitmentPanel({
         setMigrationDraft(emptyMigrationDraft);
         setMigrationEditId(null);
         setMessage({ type: "success", text: "Migration candidate saved." });
-        router.refresh();
       }
     });
   };

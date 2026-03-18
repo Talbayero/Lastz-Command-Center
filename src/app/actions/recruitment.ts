@@ -135,7 +135,7 @@ export async function saveApplicant(input: ApplicantInput) {
       return { success: false, error: "Invalid applicant status." };
     }
 
-    if (!recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
+    if (input.category && !recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
       return { success: false, error: "Invalid applicant category." };
     }
 
@@ -156,16 +156,17 @@ export async function saveApplicant(input: ApplicantInput) {
     };
 
     if (input.id) {
-      await prisma.allianceApplicant.update({
+      const record = await prisma.allianceApplicant.update({
         where: { id: input.id },
         data,
       });
+      revalidatePath("/");
+      return { success: true, record };
     } else {
-      await prisma.allianceApplicant.create({ data });
+      const record = await prisma.allianceApplicant.create({ data });
+      revalidatePath("/");
+      return { success: true, record };
     }
-
-    revalidatePath("/");
-    return { success: true };
   } catch (error: any) {
     console.error("SAVE APPLICANT ERROR:", error);
     return { success: false, error: error.message || "Failed to save applicant." };
@@ -213,16 +214,17 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
     };
 
     if (input.id) {
-      await prisma.migrationCandidate.update({
+      const record = await prisma.migrationCandidate.update({
         where: { id: input.id },
         data,
       });
+      revalidatePath("/");
+      return { success: true, record };
     } else {
-      await prisma.migrationCandidate.create({ data });
+      const record = await prisma.migrationCandidate.create({ data });
+      revalidatePath("/");
+      return { success: true, record };
     }
-
-    revalidatePath("/");
-    return { success: true };
   } catch (error: any) {
     console.error("SAVE MIGRATION CANDIDATE ERROR:", error);
     return { success: false, error: error.message || "Failed to save migration candidate." };
