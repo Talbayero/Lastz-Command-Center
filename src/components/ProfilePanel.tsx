@@ -327,7 +327,7 @@ export default function ProfilePanel({
         </section>
 
         <div className="flex-col gap-4">
-          <section className="cyber-card flex-col gap-4">
+          <section className="cyber-card flex-col gap-4 mith-hologram-panel">
             <div className="flex-row justify-between gap-4" style={{ alignItems: "center", flexWrap: "wrap" }}>
               <div>
                 <h3 style={{ color: "var(--accent-purple)" }}>Mith Tactical Advisor</h3>
@@ -335,9 +335,9 @@ export default function ProfilePanel({
                   Friendly co-pilot guidance based on your current gap versus the alliance average.
                 </p>
               </div>
-              <div style={mithAvatarWrapStyle}>
+              <div className="mith-avatar-wrap" style={mithAvatarWrapStyle}>
                 <div style={mithAvatarGlowStyle} />
-                <div style={mithAvatarStyle}>
+                <div className="mith-avatar-core" style={mithAvatarStyle}>
                   <Bot size={22} />
                   <span style={{ fontSize: "0.72rem", letterSpacing: "0.12em" }}>MITH</span>
                 </div>
