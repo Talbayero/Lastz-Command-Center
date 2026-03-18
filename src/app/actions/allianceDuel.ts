@@ -14,6 +14,7 @@ import {
 import { requirePermission } from "@/utils/auth";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
+const HUGGINGFACE_VLM_MODEL = process.env.HUGGINGFACE_VLM_MODEL || "zai-org/GLM-4.5V";
 
 function normalizePlayerName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -40,10 +41,6 @@ function isValidScoreType(value: string): value is AllianceDuelScoreType {
 async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: string }) {
   const apiKey = process.env.GEMINI_API_KEY;
   const dataUrl = `data:${input.mimeType};base64,${input.imageBase64}`;
-  if (!apiKey) {
-    return parseAllianceDuelImageWithOcr(dataUrl);
-  }
-
   const prompt = [
     "Read this Last Z alliance duel ranking screenshot.",
     "Return JSON only.",
@@ -57,45 +54,110 @@ async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: st
     "If rank is not visible, use null.",
   ].join(" ");
 
+  if (apiKey) {
+    try {
+      const response = await fetchGeminiWithRetry(apiKey, {
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: input.mimeType,
+                  data: input.imageBase64,
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
+      });
+
+      const data = await response.json();
+      const rawText =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((part: { text?: string }) => part.text ?? "")
+          .join(" ")
+          .trim() ?? "";
+
+      return normalizeAllianceDuelEntriesFromJson(rawText);
+    } catch (error) {
+      console.warn("ALLIANCE DUEL GEMINI FALLBACK TO HUGGING FACE/OCR:", error);
+    }
+  }
+
   try {
-    const response = await fetchGeminiWithRetry(apiKey, {
-      contents: [
+    return await parseAllianceDuelImageWithHuggingFace({
+      prompt,
+      imageBase64: input.imageBase64,
+      mimeType: input.mimeType,
+    });
+  } catch (error) {
+    console.warn("ALLIANCE DUEL HUGGING FACE FALLBACK TO OCR:", error);
+    return parseAllianceDuelImageWithOcr(dataUrl);
+  }
+}
+
+async function parseAllianceDuelImageWithHuggingFace(input: {
+  prompt: string;
+  imageBase64: string;
+  mimeType: string;
+}) {
+  const apiKey = process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN;
+  if (!apiKey) {
+    throw new Error("Missing HUGGINGFACE_API_KEY");
+  }
+
+  const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: HUGGINGFACE_VLM_MODEL,
+      messages: [
         {
-          parts: [
-            { text: prompt },
+          role: "user",
+          content: [
+            { type: "text", text: input.prompt },
             {
-              inlineData: {
-                mimeType: input.mimeType,
-                data: input.imageBase64,
+              type: "image_url",
+              image_url: {
+                url: `data:${input.mimeType};base64,${input.imageBase64}`,
               },
             },
           ],
         },
       ],
-      generationConfig: {
-        responseMimeType: "application/json",
+      temperature: 0.1,
+      max_tokens: 500,
+      response_format: {
+        type: "json_object",
       },
-    });
+    }),
+  });
 
-    const data = await response.json();
-    const rawText =
-      data?.candidates?.[0]?.content?.parts
-        ?.map((part: { text?: string }) => part.text ?? "")
-        .join(" ")
-        .trim() ?? "";
-
-    const parsed = parseGeminiJsonResponse(rawText);
-    const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
-
-    return entries.map((entry: any) => ({
-      name: String(entry?.name ?? "").trim(),
-      rank: normalizeRank(entry?.rank),
-      score: normalizeScore(entry?.score),
-    }));
-  } catch (error) {
-    console.warn("ALLIANCE DUEL GEMINI FALLBACK TO OCR:", error);
-    return parseAllianceDuelImageWithOcr(dataUrl);
+  if (!response.ok) {
+    throw new Error(`Hugging Face request failed with status ${response.status}`);
   }
+
+  const data = await response.json();
+  const rawText = data?.choices?.[0]?.message?.content?.trim() ?? "";
+  return normalizeAllianceDuelEntriesFromJson(rawText);
+}
+
+function normalizeAllianceDuelEntriesFromJson(rawText: string) {
+  const parsed = parseGeminiJsonResponse(rawText);
+  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+
+  return entries.map((entry: any) => ({
+    name: String(entry?.name ?? "").trim(),
+    rank: normalizeRank(entry?.rank),
+    score: normalizeScore(entry?.score),
+  }));
 }
 
 async function fetchGeminiWithRetry(apiKey: string, body: Record<string, unknown>) {
