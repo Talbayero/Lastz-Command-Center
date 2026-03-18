@@ -7,6 +7,7 @@ import { requirePermission } from "@/utils/auth";
 export const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"] as const;
 export const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"] as const;
 export const migrationContactStatuses = ["Not Contacted", "Contacted", "In Discussion", "Follow Up", "Closed"] as const;
+export const recruitmentCategories = ["Elite", "Advanced", "Medium", "Regular"] as const;
 
 export type RecruitmentStatInput = {
   name: string;
@@ -24,6 +25,7 @@ export type RecruitmentStatInput = {
 export type ApplicantInput = RecruitmentStatInput & {
   id?: string;
   timezone: string;
+  category: string;
   status: string;
 };
 
@@ -33,6 +35,7 @@ export type MigrationCandidateInput = RecruitmentStatInput & {
   originalAlliance: string;
   reasonForLeaving: string;
   contactStatus: string;
+  category: string;
   status: string;
 };
 
@@ -92,6 +95,13 @@ function migrationScore(input: RecruitmentStatInput) {
   );
 }
 
+function defaultCategoryFromScore(score: number) {
+  if (score >= 120) return "Elite";
+  if (score >= 80) return "Advanced";
+  if (score >= 45) return "Medium";
+  return "Regular";
+}
+
 export async function saveApplicant(input: ApplicantInput) {
   try {
     await requirePermission("manageRecruitment");
@@ -105,9 +115,14 @@ export async function saveApplicant(input: ApplicantInput) {
       return { success: false, error: "Invalid applicant status." };
     }
 
+    if (!recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
+      return { success: false, error: "Invalid applicant category." };
+    }
+
     const data = {
       name,
       timezone: input.timezone.trim(),
+      category: input.category || defaultCategoryFromScore(applicantScore(input)),
       status: input.status,
       notes: input.notes.trim(),
       techPower: normalizeInt(input.techPower),
@@ -154,12 +169,17 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
       return { success: false, error: "Invalid contact status." };
     }
 
+    if (!recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
+      return { success: false, error: "Invalid migration category." };
+    }
+
     const data = {
       name,
       originalServer: input.originalServer.trim(),
       originalAlliance: input.originalAlliance.trim(),
       reasonForLeaving: input.reasonForLeaving.trim(),
       contactStatus: input.contactStatus,
+      category: input.category || defaultCategoryFromScore(migrationScore(input)),
       status: input.status,
       notes: input.notes.trim(),
       techPower: normalizeInt(input.techPower),

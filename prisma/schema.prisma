@@ -95,6 +95,7 @@ model AllianceApplicant {
   id              String   @id @default(cuid())
   name            String
   timezone        String   @default("")
+  category        String   @default("Regular")
   status          String   @default("New")
   notes           String   @default("")
   techPower       Int      @default(0)
@@ -116,6 +117,7 @@ model MigrationCandidate {
   originalAlliance String
   reasonForLeaving String  @default("")
   contactStatus   String   @default("Scouted")
+  category        String   @default("Regular")
   status          String   @default("Scouted")
   notes           String   @default("")
   techPower       Int      @default(0)
