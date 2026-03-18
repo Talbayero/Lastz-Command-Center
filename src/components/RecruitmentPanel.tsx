@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
-import { ChevronDown, ChevronRight, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
 import { parseLastZProfile } from "@/utils/ocrParser";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 import {
@@ -76,6 +76,29 @@ type ScoreWeights = {
   structure: number;
   modVehicle: number;
 };
+
+type SortDirection = "asc" | "desc";
+
+type ApplicantSortKey =
+  | "name"
+  | "timezone"
+  | "category"
+  | "status"
+  | "score"
+  | "fit"
+  | "updatedAt"
+  | "warning";
+
+type MigrationSortKey =
+  | "name"
+  | "originalServer"
+  | "originalAlliance"
+  | "category"
+  | "status"
+  | "score"
+  | "fit"
+  | "updatedAt"
+  | "warning";
 
 const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"];
 const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"];
@@ -201,9 +224,63 @@ function categoryFromScore(score: number) {
   return "Regular";
 }
 
+function hasMissingStats(entry: SharedDraft) {
+  return [
+    entry.techPower,
+    entry.heroPower,
+    entry.troopPower,
+    entry.modVehiclePower,
+    entry.structurePower,
+    entry.combatPower,
+    entry.kills,
+  ].some((value) => value === 0);
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+}
+
+function compareValues(a: string | number | boolean, b: string | number | boolean, direction: SortDirection) {
+  const multiplier = direction === "asc" ? 1 : -1;
+  if (typeof a === "number" && typeof b === "number") {
+    return (a - b) * multiplier;
+  }
+  if (typeof a === "boolean" && typeof b === "boolean") {
+    return (Number(a) - Number(b)) * multiplier;
+  }
+  return String(a).localeCompare(String(b)) * multiplier;
+}
+
+function compareRecruitmentRows(
+  a: any,
+  b: any,
+  sort: { key: ApplicantSortKey | MigrationSortKey; direction: SortDirection }
+) {
+  switch (sort.key) {
+    case "warning":
+      return compareValues(a.hasWarning, b.hasWarning, sort.direction);
+    case "name":
+      return compareValues(a.name, b.name, sort.direction);
+    case "timezone":
+      return compareValues(a.timezone ?? "", b.timezone ?? "", sort.direction);
+    case "originalServer":
+      return compareValues(a.originalServer ?? "", b.originalServer ?? "", sort.direction);
+    case "originalAlliance":
+      return compareValues(a.originalAlliance ?? "", b.originalAlliance ?? "", sort.direction);
+    case "category":
+      return compareValues(a.effectiveCategory, b.effectiveCategory, sort.direction);
+    case "status":
+      return compareValues(a.status, b.status, sort.direction);
+    case "score":
+      return compareValues(a.score, b.score, sort.direction);
+    case "fit":
+      return compareValues(a.recommendation, b.recommendation, sort.direction);
+    case "updatedAt":
+      return compareValues(new Date(a.updatedAt).getTime(), new Date(b.updatedAt).getTime(), sort.direction);
+    default:
+      return 0;
+  }
 }
 
 async function cropNameBlob(file: File): Promise<Blob | null> {
@@ -294,6 +371,14 @@ export default function RecruitmentPanel({
   const [applicantWeights, setApplicantWeights] = useState<ScoreWeights>(defaultApplicantWeights);
   const [migrationWeights, setMigrationWeights] = useState<ScoreWeights>(defaultMigrationWeights);
   const [expandedRowIds, setExpandedRowIds] = useState<string[]>([]);
+  const [applicantSort, setApplicantSort] = useState<{ key: ApplicantSortKey; direction: SortDirection }>({
+    key: "score",
+    direction: "desc",
+  });
+  const [migrationSort, setMigrationSort] = useState<{ key: MigrationSortKey; direction: SortDirection }>({
+    key: "score",
+    direction: "desc",
+  });
 
   useEffect(() => {
     try {
@@ -326,10 +411,11 @@ export default function RecruitmentPanel({
             score,
             recommendation: recommendation(score),
             effectiveCategory: entry.category || categoryFromScore(score),
+            hasWarning: hasMissingStats(entry),
           };
         })
-        .sort((a, b) => b.score - a.score),
-    [applicants, applicantWeights]
+        .sort((a, b) => compareRecruitmentRows(a, b, applicantSort)),
+    [applicants, applicantWeights, applicantSort]
   );
   const migrationRows = useMemo(
     () =>
@@ -341,10 +427,11 @@ export default function RecruitmentPanel({
             score,
             recommendation: recommendation(score),
             effectiveCategory: entry.category || categoryFromScore(score),
+            hasWarning: hasMissingStats(entry),
           };
         })
-        .sort((a, b) => b.score - a.score),
-    [migrations, migrationWeights]
+        .sort((a, b) => compareRecruitmentRows(a, b, migrationSort)),
+    [migrations, migrationWeights, migrationSort]
   );
 
   const currentRows = tab === "applicants" ? applicantRows : migrationRows;
@@ -519,6 +606,20 @@ export default function RecruitmentPanel({
         setMessage({ type: "error", text: result.error || "Failed to remove migration candidate." });
       }
     });
+  };
+
+  const toggleSort = (key: ApplicantSortKey | MigrationSortKey) => {
+    if (tab === "applicants") {
+      setApplicantSort((prev) => ({
+        key: key as ApplicantSortKey,
+        direction: prev.key === key && prev.direction === "desc" ? "asc" : "desc",
+      }));
+    } else {
+      setMigrationSort((prev) => ({
+        key: key as MigrationSortKey,
+        direction: prev.key === key && prev.direction === "desc" ? "asc" : "desc",
+      }));
+    }
   };
 
   return (
@@ -701,15 +802,82 @@ export default function RecruitmentPanel({
               <thead style={{ backgroundColor: "var(--bg-dark)" }}>
                 <tr>
                   <HeaderCell>Open</HeaderCell>
-                  <HeaderCell>Name</HeaderCell>
-                  {tab === "migrations" && <HeaderCell>Original Server</HeaderCell>}
-                  {tab === "migrations" && <HeaderCell>Original Alliance</HeaderCell>}
-                  {tab === "applicants" && <HeaderCell>Timezone</HeaderCell>}
-                  <HeaderCell>Category</HeaderCell>
-                  <HeaderCell>Status</HeaderCell>
-                  <HeaderCell>Score</HeaderCell>
-                  <HeaderCell>Fit</HeaderCell>
-                  <HeaderCell>Updated</HeaderCell>
+                  <SortableHeaderCell
+                    active={tab === "applicants" ? applicantSort.key === "warning" : migrationSort.key === "warning"}
+                    direction={tab === "applicants" && applicantSort.key === "warning" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "warning" ? migrationSort.direction : null}
+                    onClick={() => toggleSort("warning")}
+                  >
+                    Verify
+                  </SortableHeaderCell>
+                  <SortableHeaderCell
+                    active={tab === "applicants" ? applicantSort.key === "name" : migrationSort.key === "name"}
+                    direction={tab === "applicants" && applicantSort.key === "name" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "name" ? migrationSort.direction : null}
+                    onClick={() => toggleSort("name")}
+                  >
+                    Name
+                  </SortableHeaderCell>
+                  {tab === "migrations" && (
+                    <SortableHeaderCell
+                      active={migrationSort.key === "originalServer"}
+                      direction={migrationSort.key === "originalServer" ? migrationSort.direction : null}
+                      onClick={() => toggleSort("originalServer")}
+                    >
+                      Original Server
+                    </SortableHeaderCell>
+                  )}
+                  {tab === "migrations" && (
+                    <SortableHeaderCell
+                      active={migrationSort.key === "originalAlliance"}
+                      direction={migrationSort.key === "originalAlliance" ? migrationSort.direction : null}
+                      onClick={() => toggleSort("originalAlliance")}
+                    >
+                      Original Alliance
+                    </SortableHeaderCell>
+                  )}
+                  {tab === "applicants" && (
+                    <SortableHeaderCell
+                      active={applicantSort.key === "timezone"}
+                      direction={applicantSort.key === "timezone" ? applicantSort.direction : null}
+                      onClick={() => toggleSort("timezone")}
+                    >
+                      Timezone
+                    </SortableHeaderCell>
+                  )}
+                  <SortableHeaderCell
+                    active={tab === "applicants" ? applicantSort.key === "category" : migrationSort.key === "category"}
+                    direction={tab === "applicants" && applicantSort.key === "category" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "category" ? migrationSort.direction : null}
+                    onClick={() => toggleSort("category")}
+                  >
+                    Category
+                  </SortableHeaderCell>
+                  <SortableHeaderCell
+                    active={tab === "applicants" ? applicantSort.key === "status" : migrationSort.key === "status"}
+                    direction={tab === "applicants" && applicantSort.key === "status" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "status" ? migrationSort.direction : null}
+                    onClick={() => toggleSort("status")}
+                  >
+                    Status
+                  </SortableHeaderCell>
+                  <SortableHeaderCell
+                    active={tab === "applicants" ? applicantSort.key === "score" : migrationSort.key === "score"}
+                    direction={tab === "applicants" && applicantSort.key === "score" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "score" ? migrationSort.direction : null}
+                    onClick={() => toggleSort("score")}
+                  >
+                    Score
+                  </SortableHeaderCell>
+                  <SortableHeaderCell
+                    active={tab === "applicants" ? applicantSort.key === "fit" : migrationSort.key === "fit"}
+                    direction={tab === "applicants" && applicantSort.key === "fit" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "fit" ? migrationSort.direction : null}
+                    onClick={() => toggleSort("fit")}
+                  >
+                    Fit
+                  </SortableHeaderCell>
+                  <SortableHeaderCell
+                    active={tab === "applicants" ? applicantSort.key === "updatedAt" : migrationSort.key === "updatedAt"}
+                    direction={tab === "applicants" && applicantSort.key === "updatedAt" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "updatedAt" ? migrationSort.direction : null}
+                    onClick={() => toggleSort("updatedAt")}
+                  >
+                    Updated
+                  </SortableHeaderCell>
                   {canManage && <HeaderCell>Actions</HeaderCell>}
                 </tr>
               </thead>
@@ -730,6 +898,15 @@ export default function RecruitmentPanel({
                         >
                           {expandedRowIds.includes(row.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </button>
+                      </BodyCell>
+                      <BodyCell>
+                        {(row as any).hasWarning ? (
+                          <span title="One or more important stats are zero and should be reviewed" style={{ color: "#ffd166", display: "inline-flex", alignItems: "center" }}>
+                            <AlertTriangle size={15} />
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </BodyCell>
                       <BodyCell strong>{`${index + 1}. ${row.name}`}</BodyCell>
                       {tab === "migrations" && <BodyCell>{(row as any).originalServer}</BodyCell>}
@@ -757,6 +934,7 @@ export default function RecruitmentPanel({
                       <tr style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "rgba(255,255,255,0.02)" }}>
                         <td colSpan={tab === "migrations" ? (canManage ? 10 : 9) : canManage ? 9 : 8} style={{ padding: "1rem" }}>
                           <div style={miniStatsGridStyle}>
+                            <MiniMetric label="Verify" value={(row as any).hasWarning ? "Needs Review" : "OK"} />
                             {tab === "migrations" && <MiniMetric label="Contact" value={(row as any).contactStatus} />}
                             <MiniMetric label="Troop" value={row.troopPower.toLocaleString()} />
                             <MiniMetric label="Combat" value={row.combatPower.toLocaleString()} />
@@ -932,6 +1110,36 @@ function LabeledField({ label, children }: { label: string; children: React.Reac
 
 function HeaderCell({ children }: { children: React.ReactNode }) {
   return <th style={{ padding: "0.8rem 1rem", textAlign: "left", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.72rem" }}>{children}</th>;
+}
+
+function SortableHeaderCell({
+  children,
+  active,
+  direction,
+  onClick,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  direction: SortDirection | null;
+  onClick: () => void;
+}) {
+  return (
+    <th
+      onClick={onClick}
+      style={{
+        padding: "0.8rem 1rem",
+        textAlign: "left",
+        color: active ? "var(--accent-neon)" : "var(--text-muted)",
+        fontFamily: "var(--font-mono)",
+        fontSize: "0.72rem",
+        cursor: "pointer",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children} {active ? (direction === "asc" ? "▲" : "▼") : "↕"}
+    </th>
+  );
 }
 
 function BodyCell({ children, strong = false }: { children: React.ReactNode; strong?: boolean }) {
