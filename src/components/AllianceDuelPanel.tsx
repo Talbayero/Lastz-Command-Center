@@ -9,6 +9,7 @@ import {
   type AllianceDuelScoreType,
 } from "@/utils/allianceDuel";
 import {
+  processAllianceDuelScreenshot,
   saveAllianceDuelManualScore,
   saveAllianceDuelParsedEntries,
   saveAllianceDuelRequirement,
@@ -338,25 +339,30 @@ export default function AllianceDuelPanel({
       for (const file of fileList) {
         const optimizedBlob = await optimizeUploadImage(file);
         const parsedEntries = await parseAllianceDuelImageLocally(optimizedBlob);
-        if (parsedEntries.length === 0) {
-          setMessage({
-            type: "error",
-            text:
-              fileList.length > 1
-                ? `Stopped on ${file.name}: OCR could not detect any duel rows. Try a clearer screenshot.`
-                : "OCR could not detect any duel rows. Try a clearer screenshot.",
-          });
-          return;
+        let result;
+        if (parsedEntries.length > 0) {
+          result = await withTimeout(
+            saveAllianceDuelParsedEntries({
+              scoreType: activeScoreType,
+              dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
+              entries: parsedEntries,
+            }),
+            45000,
+            `Saving timed out on ${file.name}. Try again in a moment.`
+          );
+        } else {
+          const imageBase64 = await blobToBase64(optimizedBlob);
+          result = await withTimeout(
+            processAllianceDuelScreenshot({
+              imageBase64,
+              mimeType: optimizedBlob.type || file.type || "image/png",
+              scoreType: activeScoreType,
+              dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
+            }),
+            60000,
+            `Vision fallback timed out on ${file.name}. Try a smaller screenshot or try again in a moment.`
+          );
         }
-        const result = await withTimeout(
-          saveAllianceDuelParsedEntries({
-            scoreType: activeScoreType,
-            dayKey: activeScoreType === "daily" ? activeDayKey : undefined,
-            entries: parsedEntries,
-          }),
-          45000,
-          `Saving timed out on ${file.name}. Try again in a moment.`
-        );
 
         if (!result.success) {
           setMessage({
@@ -876,6 +882,12 @@ async function blobToDataUrl(blob: Blob) {
     reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
     reader.readAsDataURL(blob);
   });
+}
+
+async function blobToBase64(blob: Blob) {
+  const dataUrl = await blobToDataUrl(blob);
+  const [, base64 = ""] = dataUrl.split(",", 2);
+  return base64;
 }
 
 async function preprocessDuelImageForOcr(blob: Blob) {
