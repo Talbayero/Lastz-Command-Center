@@ -399,6 +399,7 @@ export default function RecruitmentPanel({
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [tab, setTab] = useState<"applicants" | "migrations">("applicants");
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [searchQuery, setSearchQuery] = useState("");
   const [applicants, setApplicants] = useState(initialApplicants);
   const [migrations, setMigrations] = useState(initialMigrations);
   const [applicantDraft, setApplicantDraft] = useState(emptyApplicantDraft);
@@ -473,7 +474,12 @@ export default function RecruitmentPanel({
     [migrations, migrationWeights, migrationSort]
   );
 
-  const currentRows = tab === "applicants" ? applicantRows : migrationRows;
+  const currentRows = useMemo(() => {
+    const rows = tab === "applicants" ? applicantRows : migrationRows;
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((row) => row.name.toLowerCase().includes(query));
+  }, [tab, applicantRows, migrationRows, searchQuery]);
 
   const summaryRows = useMemo(() => {
     const rows = currentRows;
@@ -881,6 +887,20 @@ export default function RecruitmentPanel({
           <h3 style={{ color: "var(--accent-neon)" }}>
             {tab === "applicants" ? "Applicant Ranking" : "Migration Candidate Ranking"}
           </h3>
+          <div className="flex-row justify-between gap-3" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ minWidth: "220px", flex: "1 1 320px" }}>
+              <div style={summaryLabelStyle}>Search {tab === "applicants" ? "Applicant" : "Candidate"}</div>
+              <input
+                className="cyber-input"
+                placeholder={`Type a ${tab === "applicants" ? "player" : "candidate"} name...`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
+              Showing {currentRows.length} of {(tab === "applicants" ? applicantRows : migrationRows).length}
+            </div>
+          </div>
           <div className="responsive-table" style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead style={{ backgroundColor: "var(--bg-dark)" }}>
