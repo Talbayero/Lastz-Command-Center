@@ -253,10 +253,29 @@ h1, h2, h3, h4, h5, h6 {
 
 .mith-avatar-core {
   animation: mith-pulse 3.2s ease-in-out infinite;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
 }
 
 .mith-hologram-panel {
   animation: mith-panel-glow 6s ease-in-out infinite;
+}
+
+.mith-avatar-wrap:hover .mith-avatar-core {
+  transform: scale(1.22);
+  box-shadow: 0 0 32px rgba(0, 255, 204, 0.4), 0 0 24px rgba(176, 38, 255, 0.2);
+  filter: brightness(1.12);
+}
+
+.mith-hover-bubble {
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
+}
+
+.mith-avatar-wrap:hover .mith-hover-bubble {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 @keyframes mith-float {

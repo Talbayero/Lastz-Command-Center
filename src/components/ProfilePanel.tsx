@@ -311,6 +311,9 @@ export default function ProfilePanel({
               </div>
               <div className="mith-avatar-wrap" style={mithAvatarWrapStyle}>
                 <div style={mithAvatarGlowStyle} />
+                <div className="mith-hover-bubble" style={mithHoverBubbleStyle}>
+                  Hello!
+                </div>
                 <div className="mith-avatar-core" style={mithAvatarStyle}>
                   <div style={mithImageFrameStyle}>
                     <Image
@@ -471,6 +474,22 @@ const mithAvatarGlowStyle: React.CSSProperties = {
   background:
     "radial-gradient(circle, rgba(0,255,204,0.35) 0%, rgba(0,255,204,0.08) 45%, rgba(176,38,255,0.18) 75%, transparent 100%)",
   filter: "blur(4px)",
+};
+
+const mithHoverBubbleStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "-12px",
+  left: "56px",
+  zIndex: 2,
+  padding: "0.3rem 0.55rem",
+  borderRadius: "999px",
+  border: "1px solid rgba(0,255,204,0.45)",
+  background: "rgba(9, 20, 28, 0.92)",
+  color: "var(--accent-neon)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "0.72rem",
+  boxShadow: "0 0 16px rgba(0,255,204,0.18)",
+  whiteSpace: "nowrap",
 };
 
 const mithAvatarStyle: React.CSSProperties = {
