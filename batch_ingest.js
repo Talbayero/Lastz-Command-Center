@@ -24,48 +24,145 @@ function normalizeName(value) {
   return value.replace(/[^a-zA-Z0-9 '\-]/g, "").replace(/\s+/g, " ").trim();
 }
 
-function parseProfile(text) {
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+function parseDigits(value) {
+  const digits = String(value ?? "").replace(/[^\d]/g, "");
+  return digits ? parseInt(digits, 10) : 0;
+}
 
-  const extractStat = (label) => {
-    const regex = new RegExp(`${label}[\\s\\n]*([\\d,]{4,})`, "i");
-    const match = text.match(regex);
-    const value = match?.[1] ?? "";
-    return value ? parseInt(value.replace(/,/g, ""), 10) : 0;
-  };
+function normalizeLabel(value) {
+  return String(value ?? "").toLowerCase().replace(/[^a-z]/g, "");
+}
 
-  const powerStats = {
-    structure: extractStat("Structure Power"),
-    tech: extractStat("Tech Power"),
-    troop: extractStat("Troop Power"),
-    hero: extractStat("Hero Power"),
-    modVehicle: extractStat("Mod Vehicle Power"),
+function normalizeHeaderNumbers(text) {
+  return (String(text ?? "").match(/\d[\d,\s.]{4,}/g) ?? [])
+    .map((entry) => parseDigits(entry))
+    .filter((value) => value > 0)
+    .sort((a, b) => b - a);
+}
+
+function groupWordsIntoRows(words) {
+  const sorted = words
+    .filter((word) => word && word.text && word.bbox)
+    .map((word) => ({
+      text: String(word.text).trim(),
+      x0: word.bbox.x0 ?? 0,
+      y0: word.bbox.y0 ?? 0,
+      x1: word.bbox.x1 ?? 0,
+      y1: word.bbox.y1 ?? 0,
+    }))
+    .filter((word) => word.text)
+    .sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+
+  const rows = [];
+
+  for (const word of sorted) {
+    const center = (word.y0 + word.y1) / 2;
+    const existing = rows.find((row) => {
+      const averageCenter = row.reduce((sum, item) => sum + (item.y0 + item.y1) / 2, 0) / Math.max(row.length, 1);
+      return Math.abs(averageCenter - center) <= 24;
+    });
+
+    if (existing) {
+      existing.push(word);
+    } else {
+      rows.push([word]);
+    }
+  }
+
+  return rows.map((row) => row.sort((a, b) => a.x0 - b.x0));
+}
+
+function parseLabelAlignedStats(words, imageWidth) {
+  const rows = groupWordsIntoRows(words);
+  const stats = {
+    structure: 0,
+    tech: 0,
+    troop: 0,
+    hero: 0,
+    modVehicle: 0,
   };
+  const labels = [
+    { key: "structure", match: ["structurepower", "structure"] },
+    { key: "tech", match: ["techpower", "tech"] },
+    { key: "troop", match: ["trooppower", "troop"] },
+    { key: "hero", match: ["heropower", "hero"] },
+    { key: "modVehicle", match: ["modvehiclepower", "modvehicle", "vehiclepower"] },
+  ];
+
+  for (const row of rows) {
+    const labelWords = row.filter((word) => word.x0 < imageWidth * 0.55);
+    const valueWords = row.filter((word) => word.x0 >= imageWidth * 0.45);
+    const labelText = normalizeLabel(labelWords.map((word) => word.text).join(""));
+    const match = labels.find((label) => label.match.some((candidate) => labelText.includes(candidate)));
+    if (!match) continue;
+
+    const parsedValue = parseDigits(valueWords.map((word) => word.text).join(" "));
+    if (parsedValue > 0) {
+      stats[match.key] = parsedValue;
+    }
+  }
+
+  return stats;
+}
+
+function parseProfile(text, words = [], imageWidth = 0, imageHeight = 0) {
+  const powerStats = parseLabelAlignedStats(
+    words.filter((word) => {
+      const bbox = word?.bbox;
+      if (!bbox) return false;
+      const centerY = ((bbox.y0 ?? 0) + (bbox.y1 ?? 0)) / 2;
+      return centerY >= imageHeight * 0.34 && centerY <= imageHeight * 0.92;
+    }),
+    imageWidth
+  );
+
+  if (Object.values(powerStats).every((value) => value === 0)) {
+    const extractStat = (label) => {
+      const regex = new RegExp(`${label}[\\s\\n]*([\\d,]{4,})`, "i");
+      const match = text.match(regex);
+      const value = match?.[1] ?? "";
+      return value ? parseInt(value.replace(/,/g, ""), 10) : 0;
+    };
+
+    powerStats.structure = extractStat("Structure Power");
+    powerStats.tech = extractStat("Tech Power");
+    powerStats.troop = extractStat("Troop Power");
+    powerStats.hero = extractStat("Hero Power");
+    powerStats.modVehicle = extractStat("Mod Vehicle Power");
+  }
 
   const subStatSum = Object.values(powerStats).reduce((sum, value) => sum + value, 0);
 
-  const structureIdx = text.toLowerCase().indexOf("structure power");
-  const headerText = structureIdx > 0 ? text.substring(0, structureIdx) : lines.slice(0, 5).join("\n");
-  const headerNums = headerText.match(/([\d,]{5,})/g);
+  const headerWords = words.filter((word) => {
+    const bbox = word?.bbox;
+    if (!bbox) return false;
+    const centerY = ((bbox.y0 ?? 0) + (bbox.y1 ?? 0)) / 2;
+    return centerY <= imageHeight * 0.23;
+  });
+  const headerText = headerWords.length
+    ? headerWords
+        .sort((a, b) => (a.bbox.y0 ?? 0) - (b.bbox.y0 ?? 0) || (a.bbox.x0 ?? 0) - (b.bbox.x0 ?? 0))
+        .map((word) => word.text ?? "")
+        .join(" ")
+    : String(text).split("\n").slice(0, 5).join("\n");
+  const headerNumbers = normalizeHeaderNumbers(headerText);
 
   let totalPower = subStatSum;
   let kills = 0;
 
-  if (headerNums && headerNums.length >= 2) {
-    const sorted = headerNums
-      .map((value) => parseInt(value.replace(/,/g, ""), 10))
-      .sort((a, b) => b - a);
+  if (headerNumbers.length >= 2) {
+    totalPower = headerNumbers[0];
+    kills = headerNumbers[1];
+  } else if (headerNumbers.length === 1) {
+    totalPower = headerNumbers[0];
+  }
 
-    totalPower = sorted[0];
-    kills = sorted[1];
-
-    if (subStatSum > 0 && totalPower > subStatSum * 1.5) {
-      const corrected = parseInt(totalPower.toString().substring(1), 10);
-      if (Math.abs(corrected - subStatSum) < subStatSum * 0.15) {
-        totalPower = corrected;
-      } else {
-        totalPower = subStatSum;
-      }
+  if (subStatSum > 0 && totalPower > subStatSum * 1.5) {
+    const corrected = parseInt(totalPower.toString().substring(1), 10);
+    if (Math.abs(corrected - subStatSum) < subStatSum * 0.15) {
+      totalPower = corrected;
+    } else {
+      totalPower = subStatSum;
     }
   }
 
@@ -206,7 +303,12 @@ async function ingest() {
 
     try {
       const result = await Tesseract.recognize(filePath, "eng");
-      const parsed = parseProfile(result.data.text);
+      const parsed = parseProfile(
+        result.data.text,
+        result.data.words ?? [],
+        result.data.imageSize?.width ?? 0,
+        result.data.imageSize?.height ?? 0
+      );
       const geminiName = await extractNameWithGemini(filePath).catch(() => "");
       const fallbackName = `Unknown_${path.parse(file).name.replace(/\s+/g, "_")}`;
       const enrichedData = {

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { parseLastZProfile } from "@/utils/ocrParser";
+import { parseLastZProfileImage } from "@/utils/ocrParser";
 import Tesseract from "tesseract.js";
 import { Upload, Loader2, CheckCircle2, PencilLine, ScanLine } from "lucide-react";
 import { savePlayerData } from "@/app/actions/savePlayer";
@@ -71,6 +71,43 @@ async function cropNameBlob(file: File): Promise<Blob | null> {
   });
 }
 
+async function createNameVariantBlob(file: File, mode: "soft" | "high-contrast"): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+
+      const cropX = Math.round(img.width * 0.3);
+      const cropW = Math.round(img.width * 0.7);
+      const cropH = Math.round(img.height * 0.18);
+      const scale = mode === "high-contrast" ? 4 : 3;
+      canvas.width = cropW * scale;
+      canvas.height = cropH * scale;
+      ctx.imageSmoothingEnabled = mode === "soft";
+      ctx.drawImage(img, cropX, 0, cropW, cropH, 0, 0, canvas.width, canvas.height);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        const contrasted = Math.max(0, Math.min(255, (gray - 128) * (mode === "high-contrast" ? 2.2 : 1.6) + 128));
+        const value = mode === "high-contrast" ? (contrasted > 145 ? 255 : 0) : contrasted;
+        d[i] = d[i + 1] = d[i + 2] = value;
+        d[i + 3] = 255;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    };
+    img.onerror = () => resolve(null);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -107,11 +144,35 @@ async function extractNameFromImage(file: File): Promise<string> {
   }
 
   try {
-    const result = await Tesseract.recognize(croppedBlob, "eng", {
-      // @ts-expect-error Tesseract accepts this runtime option even though the package type omits it.
-      tessedit_pageseg_mode: "7",
-    });
-    return result.data.text.replace(/[^a-zA-Z ]/g, "").trim().replace(/\s+/g, " ");
+    const variants = [
+      await createNameVariantBlob(file, "soft"),
+      await createNameVariantBlob(file, "high-contrast"),
+      croppedBlob,
+    ].filter((blob): blob is Blob => Boolean(blob));
+
+    let bestName = "";
+    let bestScore = -1;
+
+    for (const variant of variants) {
+      const result = await Tesseract.recognize(variant, "eng", {
+        // @ts-expect-error Tesseract accepts this runtime option even though the package type omits it.
+        tessedit_pageseg_mode: "7",
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_ '",
+      });
+
+      const cleaned = result.data.text
+        .replace(/[^a-zA-Z0-9 '\-]/g, "")
+        .trim()
+        .replace(/\s+/g, " ");
+      const score = cleaned.replace(/[^A-Za-z0-9]/g, "").length;
+
+      if (score > bestScore) {
+        bestName = cleaned;
+        bestScore = score;
+      }
+    }
+
+    return bestName;
   } catch {
     return "";
   }
@@ -284,11 +345,7 @@ export default function OcrUploader({
     setIsProcessing(true);
     setProgress(0);
     try {
-      const result = await Tesseract.recognize(file, "eng", {
-        logger: m => { if (m.status === "recognizing text") setProgress(Math.round(m.progress * 50)); },
-      });
-      const stats = parseLastZProfile(result.data.text);
-      setProgress(55);
+      const stats = await parseLastZProfileImage(file, (value) => setProgress(Math.max(value, 5)));
       const rawName = await extractNameFromImage(file);
       setProgress(100);
       const nl = rawName.toLowerCase();
