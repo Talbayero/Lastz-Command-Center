@@ -68,7 +68,8 @@ function getCombatData(input: RecruitmentStatInput) {
     march2Power,
     march3Power,
     march4Power,
-    combatPower: marchTotal > 0 ? marchTotal : normalizeInt(input.combatPower),
+    // Recruitment combat is always derived from the march aggregate.
+    combatPower: marchTotal,
   };
 }
 

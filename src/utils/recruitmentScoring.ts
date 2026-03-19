@@ -92,9 +92,7 @@ export function totalWeight(weights: RecruitmentScoreWeights) {
 }
 
 export function getCombatPower(input: RecruitmentScoreInput) {
-  const marchTotal =
-    input.march1Power + input.march2Power + input.march3Power + input.march4Power;
-  return marchTotal > 0 ? marchTotal : input.combatPower;
+  return input.march1Power + input.march2Power + input.march3Power + input.march4Power;
 }
 
 export function computeRecruitmentScore(

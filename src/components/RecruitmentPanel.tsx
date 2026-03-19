@@ -300,7 +300,7 @@ function toApplicantDraftFromCsv(row: Record<string, string>): ApplicantDraft {
     march2Power: csvNumber(getCsvValue(row, "march 2 power", "march2power", "march2")),
     march3Power: csvNumber(getCsvValue(row, "march 3 power", "march3power", "march3")),
     march4Power: csvNumber(getCsvValue(row, "march 4 power", "march4power", "march4")),
-    combatPower: csvNumber(getCsvValue(row, "combat power", "combat")),
+    combatPower: 0,
     kills: csvNumber(getCsvValue(row, "kills")),
     notes: getCsvValue(row, "notes"),
   };
@@ -324,7 +324,7 @@ function toMigrationDraftFromCsv(row: Record<string, string>): MigrationDraft {
     march2Power: csvNumber(getCsvValue(row, "march 2 power", "march2power", "march2")),
     march3Power: csvNumber(getCsvValue(row, "march 3 power", "march3power", "march3")),
     march4Power: csvNumber(getCsvValue(row, "march 4 power", "march4power", "march4")),
-    combatPower: csvNumber(getCsvValue(row, "combat power", "combat")),
+    combatPower: 0,
     kills: csvNumber(getCsvValue(row, "kills")),
     notes: getCsvValue(row, "notes"),
   };
@@ -346,7 +346,6 @@ function createCsvTemplate(scope: "applicants" | "migrations") {
           "march_2_power",
           "march_3_power",
           "march_4_power",
-          "combat_power",
           "kills",
           "notes",
         ]
@@ -367,7 +366,6 @@ function createCsvTemplate(scope: "applicants" | "migrations") {
           "march_2_power",
           "march_3_power",
           "march_4_power",
-          "combat_power",
           "kills",
           "notes",
         ];
@@ -383,7 +381,6 @@ function createCsvTemplate(scope: "applicants" | "migrations") {
           "81674460",
           "8061391",
           "63673199",
-          "0",
           "0",
           "0",
           "0",
@@ -408,7 +405,6 @@ function createCsvTemplate(scope: "applicants" | "migrations") {
           "0",
           "0",
           "0",
-          "0",
           "4341281",
           "Optional notes",
         ];
@@ -421,8 +417,7 @@ function marchTotal(entry: Pick<SharedDraft, "march1Power" | "march2Power" | "ma
 }
 
 function effectiveCombatPower(entry: SharedDraft) {
-  const total = marchTotal(entry);
-  return total > 0 ? total : entry.combatPower;
+  return marchTotal(entry);
 }
 
 function hasMissingStats(entry: SharedDraft) {
