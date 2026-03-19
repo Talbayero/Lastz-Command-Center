@@ -506,9 +506,8 @@ export default function RecruitmentPanel({
         march2Power: 0,
         march3Power: 0,
         march4Power: 0,
-        // Recruitment uses combat as a top-level strength signal. When no march breakdown
-        // is available from the screenshot, fall back to the shield total.
-        combatPower: parsed.totalPower,
+        // Combat power in recruitment is march-based; profile screenshots do not include it.
+        combatPower: 0,
         kills: parsed.kills,
         notes: "",
       };

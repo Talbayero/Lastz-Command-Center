@@ -134,6 +134,22 @@ function parseDigits(value: string) {
   return digits ? parseInt(digits, 10) : 0;
 }
 
+function digitCount(value: number) {
+  return value > 0 ? String(value).length : 0;
+}
+
+function pickBestNumericValue(candidates: number[]) {
+  return candidates
+    .filter((value) => value > 0)
+    .sort((a, b) => {
+      const digitDelta = digitCount(b) - digitCount(a);
+      if (digitDelta !== 0) {
+        return digitDelta;
+      }
+      return b - a;
+    })[0] ?? 0;
+}
+
 function normalizeHeaderNumbers(text: string) {
   return (text.match(/\d[\d,\s.]{4,}/g) ?? [])
     .map((entry) => parseDigits(entry))
@@ -213,6 +229,24 @@ function getHeaderBox(width: number, height: number): CropBox {
     y: height * 0.035,
     width: width * 0.63,
     height: height * 0.18,
+  };
+}
+
+function getHeaderValueBox(kind: "totalPower" | "kills", width: number, height: number): CropBox {
+  if (kind === "totalPower") {
+    return {
+      x: width * 0.44,
+      y: height * 0.05,
+      width: width * 0.28,
+      height: height * 0.1,
+    };
+  }
+
+  return {
+    x: width * 0.75,
+    y: height * 0.05,
+    width: width * 0.2,
+    height: height * 0.1,
   };
 }
 
@@ -296,6 +330,17 @@ export async function parseLastZProfileImage(
   const headerText = await recognizeCanvasText(headerCanvas, "numeric", 0, 25, onProgress);
   const headerNumbers = normalizeHeaderNumbers(headerText);
 
+  const totalPowerBox = getHeaderValueBox("totalPower", loaded.width, loaded.height);
+  const killsBox = getHeaderValueBox("kills", loaded.width, loaded.height);
+  const totalPowerCandidates = await Promise.all([
+    recognizeCanvasText(drawCropToCanvas(loaded, totalPowerBox, 4, "numeric"), "numeric"),
+    recognizeCanvasText(drawCropToCanvas(loaded, totalPowerBox, 4, "name"), "name"),
+  ]);
+  const killsCandidates = await Promise.all([
+    recognizeCanvasText(drawCropToCanvas(loaded, killsBox, 4, "numeric"), "numeric"),
+    recognizeCanvasText(drawCropToCanvas(loaded, killsBox, 4, "name"), "name"),
+  ]);
+
   const tableCanvas = drawCropToCanvas(loaded, getTableBox(loaded.width, loaded.height), 3, "name");
   const tableOcr = await recognizeCanvasWords(tableCanvas, "name", 25, 55, onProgress);
   const alignedStats = parseLabelAlignedStats(tableOcr.words, tableCanvas.width);
@@ -303,34 +348,45 @@ export async function parseLastZProfileImage(
   const powerStats = { ...alignedStats };
 
   for (const row of STAT_ROW_ORDER) {
-    if (powerStats[row.key] > 0) continue;
-    const rowCanvas = drawCropToCanvas(
-      loaded,
-      {
-        x: loaded.width * 0.55,
-        y: loaded.height * row.y - (loaded.height * 0.085) / 2,
-        width: loaded.width * 0.37,
-        height: loaded.height * 0.085,
-      },
-      3,
-      "numeric"
-    );
-    const rowText = await recognizeCanvasText(rowCanvas, "numeric", 80, 10, onProgress);
-    const parsedValue = parseDigits(rowText);
-    if (parsedValue > 0) {
-      powerStats[row.key] = parsedValue;
-    }
+    const rowBox = {
+      x: loaded.width * 0.53,
+      y: loaded.height * row.y - (loaded.height * 0.09) / 2,
+      width: loaded.width * 0.42,
+      height: loaded.height * 0.09,
+    };
+    const [numericText, softText] = await Promise.all([
+      recognizeCanvasText(drawCropToCanvas(loaded, rowBox, 4, "numeric"), "numeric", 80, 5, onProgress),
+      recognizeCanvasText(drawCropToCanvas(loaded, rowBox, 4, "name"), "name", 85, 5, onProgress),
+    ]);
+    powerStats[row.key] = pickBestNumericValue([
+      powerStats[row.key],
+      parseDigits(numericText),
+      parseDigits(softText),
+    ]);
   }
 
   const subStatSum = Object.values(powerStats).reduce((sum, value) => sum + value, 0);
   let totalPower = subStatSum;
   let kills = 0;
 
-  if (headerNumbers.length >= 2) {
+  const totalPowerFromBox = pickBestNumericValue(totalPowerCandidates.map(parseDigits));
+  const killsFromBox = pickBestNumericValue(killsCandidates.map(parseDigits));
+
+  if (totalPowerFromBox > 0) {
+    totalPower = totalPowerFromBox;
+  } else if (headerNumbers.length >= 1) {
+    totalPower = headerNumbers[0];
+  }
+
+  if (killsFromBox > 0) {
+    kills = killsFromBox;
+  } else if (headerNumbers.length >= 2) {
+    kills = headerNumbers[1];
+  }
+
+  if (headerNumbers.length >= 2 && totalPower === subStatSum && kills === 0) {
     totalPower = headerNumbers[0];
     kills = headerNumbers[1];
-  } else if (headerNumbers.length === 1) {
-    totalPower = headerNumbers[0];
   }
 
   if (subStatSum > 0 && totalPower > subStatSum * 1.5) {
