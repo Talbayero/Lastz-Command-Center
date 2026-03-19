@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
-import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Download, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
 import { parseLastZProfileImage } from "@/utils/ocrParser";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 import {
@@ -211,6 +211,209 @@ function isMigrationRow(row: RecruitmentRow): row is MigrationRow {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+function normalizeCsvHeader(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function parseCsvText(text: string) {
+  const lines = text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    return [];
+  }
+
+  const headers = parseCsvLine(lines[0]).map(normalizeCsvHeader);
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line);
+    return headers.reduce<Record<string, string>>((acc, header, index) => {
+      acc[header] = values[index] ?? "";
+      return acc;
+    }, {});
+  });
+}
+
+function csvNumber(value: string | undefined) {
+  const digits = (value ?? "").replace(/[^\d]/g, "");
+  return digits ? Number(digits) : 0;
+}
+
+function getCsvValue(row: Record<string, string>, ...keys: string[]) {
+  for (const key of keys) {
+    const normalized = normalizeCsvHeader(key);
+    const value = row[normalized];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return "";
+}
+
+function toApplicantDraftFromCsv(row: Record<string, string>): ApplicantDraft {
+  return {
+    name: getCsvValue(row, "player name", "name"),
+    timezone: getCsvValue(row, "timezone") || "UTC-6",
+    status: getCsvValue(row, "status") || "New",
+    techPower: csvNumber(getCsvValue(row, "tech power", "tech")),
+    heroPower: csvNumber(getCsvValue(row, "hero power", "hero")),
+    troopPower: csvNumber(getCsvValue(row, "troop power", "troop")),
+    modVehiclePower: csvNumber(getCsvValue(row, "mod vehicle power", "mod vehicle", "modvehicle")),
+    structurePower: csvNumber(getCsvValue(row, "structure power", "structure")),
+    march1Power: csvNumber(getCsvValue(row, "march 1 power", "march1power", "march1")),
+    march2Power: csvNumber(getCsvValue(row, "march 2 power", "march2power", "march2")),
+    march3Power: csvNumber(getCsvValue(row, "march 3 power", "march3power", "march3")),
+    march4Power: csvNumber(getCsvValue(row, "march 4 power", "march4power", "march4")),
+    combatPower: csvNumber(getCsvValue(row, "combat power", "combat")),
+    kills: csvNumber(getCsvValue(row, "kills")),
+    notes: getCsvValue(row, "notes"),
+  };
+}
+
+function toMigrationDraftFromCsv(row: Record<string, string>): MigrationDraft {
+  return {
+    name: getCsvValue(row, "player name", "name"),
+    originalServer: getCsvValue(row, "original server", "server", "origin server"),
+    originalAlliance: getCsvValue(row, "original alliance", "alliance", "origin alliance"),
+    reasonForLeaving: getCsvValue(row, "reason for leaving", "reason"),
+    contactStatus: getCsvValue(row, "contact status", "contact") || "Not Contacted",
+    category: getCsvValue(row, "category") || "Regular",
+    status: getCsvValue(row, "status") || "Scouted",
+    techPower: csvNumber(getCsvValue(row, "tech power", "tech")),
+    heroPower: csvNumber(getCsvValue(row, "hero power", "hero")),
+    troopPower: csvNumber(getCsvValue(row, "troop power", "troop")),
+    modVehiclePower: csvNumber(getCsvValue(row, "mod vehicle power", "mod vehicle", "modvehicle")),
+    structurePower: csvNumber(getCsvValue(row, "structure power", "structure")),
+    march1Power: csvNumber(getCsvValue(row, "march 1 power", "march1power", "march1")),
+    march2Power: csvNumber(getCsvValue(row, "march 2 power", "march2power", "march2")),
+    march3Power: csvNumber(getCsvValue(row, "march 3 power", "march3power", "march3")),
+    march4Power: csvNumber(getCsvValue(row, "march 4 power", "march4power", "march4")),
+    combatPower: csvNumber(getCsvValue(row, "combat power", "combat")),
+    kills: csvNumber(getCsvValue(row, "kills")),
+    notes: getCsvValue(row, "notes"),
+  };
+}
+
+function createCsvTemplate(scope: "applicants" | "migrations") {
+  const headers =
+    scope === "applicants"
+      ? [
+          "player_name",
+          "timezone",
+          "status",
+          "tech_power",
+          "hero_power",
+          "troop_power",
+          "mod_vehicle_power",
+          "structure_power",
+          "march_1_power",
+          "march_2_power",
+          "march_3_power",
+          "march_4_power",
+          "combat_power",
+          "kills",
+          "notes",
+        ]
+      : [
+          "player_name",
+          "original_server",
+          "original_alliance",
+          "status",
+          "contact_status",
+          "category",
+          "reason_for_leaving",
+          "tech_power",
+          "hero_power",
+          "troop_power",
+          "mod_vehicle_power",
+          "structure_power",
+          "march_1_power",
+          "march_2_power",
+          "march_3_power",
+          "march_4_power",
+          "combat_power",
+          "kills",
+          "notes",
+        ];
+
+  const sample =
+    scope === "applicants"
+      ? [
+          "SamplePlayer",
+          "UTC-6",
+          "New",
+          "19255142",
+          "56195929",
+          "81674460",
+          "8061391",
+          "63673199",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "4341281",
+          "Optional notes",
+        ]
+      : [
+          "SamplePlayer",
+          "123",
+          "PHnx",
+          "Scouted",
+          "Not Contacted",
+          "Regular",
+          "Optional reason",
+          "19255142",
+          "56195929",
+          "81674460",
+          "8061391",
+          "63673199",
+          "0",
+          "0",
+          "0",
+          "0",
+          "0",
+          "4341281",
+          "Optional notes",
+        ];
+
+  return `${headers.join(",")}\n${sample.join(",")}\n`;
 }
 
 function marchTotal(entry: Pick<SharedDraft, "march1Power" | "march2Power" | "march3Power" | "march4Power">) {
@@ -487,6 +690,17 @@ export default function RecruitmentPanel({
       ? getFormulaLabel("applicants", applicantWeights)
       : getFormulaLabel("migrations", migrationWeights);
 
+  const downloadCsvTemplate = () => {
+    const csv = createCsvTemplate(tab);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = tab === "applicants" ? "applicant-template.csv" : "migration-candidates-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleScreenshot = async (file: File) => {
     setIsScanning(true);
     setMessage(null);
@@ -522,6 +736,110 @@ export default function RecruitmentPanel({
       setMessage({ type: "success", text: "Screenshot parsed into a draft. Review the fields before saving." });
     } catch (error: unknown) {
       setMessage({ type: "error", text: getErrorMessage(error) || "Failed to parse screenshot." });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleCsvImport = async (file: File) => {
+    setIsScanning(true);
+    setMessage(null);
+
+    try {
+      const text = await file.text();
+      const rows = parseCsvText(text);
+      if (rows.length === 0) {
+        throw new Error("CSV is empty or missing data rows.");
+      }
+
+      if (tab === "applicants") {
+        const createdRecords: ApplicantRecord[] = [];
+        let successCount = 0;
+
+        for (const row of rows) {
+          const draft = toApplicantDraftFromCsv(row);
+          if (!draft.name.trim()) {
+            continue;
+          }
+
+          const result = await saveApplicant(draft);
+          if (!result.success || !result.record) {
+            throw new Error(result.error || `Failed to import applicant ${draft.name}.`);
+          }
+
+          createdRecords.push({
+            ...result.record,
+            createdAt: new Date(result.record.createdAt).toISOString(),
+            updatedAt: new Date(result.record.updatedAt).toISOString(),
+          });
+          successCount += 1;
+        }
+
+        if (successCount === 0) {
+          throw new Error("No valid applicant rows were found in the CSV.");
+        }
+
+        setApplicants((prev) => {
+          const merged = [...prev];
+          for (const record of createdRecords) {
+            const existingIndex = merged.findIndex((entry) => entry.id === record.id);
+            if (existingIndex >= 0) {
+              merged[existingIndex] = record;
+            } else {
+              merged.unshift(record);
+            }
+          }
+          return merged;
+        });
+
+        setMessage({ type: "success", text: `Imported ${successCount} applicant${successCount === 1 ? "" : "s"} from CSV.` });
+      } else {
+        const createdRecords: MigrationRecord[] = [];
+        let successCount = 0;
+
+        for (const row of rows) {
+          const draft = toMigrationDraftFromCsv(row);
+          if (!draft.name.trim()) {
+            continue;
+          }
+
+          const result = await saveMigrationCandidate(draft);
+          if (!result.success || !result.record) {
+            throw new Error(result.error || `Failed to import migration candidate ${draft.name}.`);
+          }
+
+          createdRecords.push({
+            ...result.record,
+            createdAt: new Date(result.record.createdAt).toISOString(),
+            updatedAt: new Date(result.record.updatedAt).toISOString(),
+          });
+          successCount += 1;
+        }
+
+        if (successCount === 0) {
+          throw new Error("No valid migration rows were found in the CSV.");
+        }
+
+        setMigrations((prev) => {
+          const merged = [...prev];
+          for (const record of createdRecords) {
+            const existingIndex = merged.findIndex((entry) => entry.id === record.id);
+            if (existingIndex >= 0) {
+              merged[existingIndex] = record;
+            } else {
+              merged.unshift(record);
+            }
+          }
+          return merged;
+        });
+
+        setMessage({
+          type: "success",
+          text: `Imported ${successCount} migration candidate${successCount === 1 ? "" : "s"} from CSV.`,
+        });
+      }
+    } catch (error: unknown) {
+      setMessage({ type: "error", text: getErrorMessage(error) || "Failed to import CSV." });
     } finally {
       setIsScanning(false);
     }
@@ -822,6 +1140,35 @@ export default function RecruitmentPanel({
                   </div>
                 </div>
               </label>
+              <label className="cyber-label">CSV Import</label>
+              <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
+                <label className="cyber-button" style={{ cursor: isScanning ? "not-allowed" : "pointer", opacity: isScanning ? 0.65 : 1 }}>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    style={{ display: "none" }}
+                    disabled={isScanning}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        void handleCsvImport(file);
+                      }
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                  <Upload size={14} />
+                  <span>Upload CSV</span>
+                </label>
+                <button className="cyber-button" type="button" onClick={downloadCsvTemplate}>
+                  <Download size={14} />
+                  <span>Download Template</span>
+                </button>
+              </div>
+              <div style={{ color: "var(--text-muted)", fontSize: "0.78rem" }}>
+                {tab === "applicants"
+                  ? "Bulk import names, timezone, status, stats, marches, kills, and notes."
+                  : "Bulk import server/alliance info, contact status, category, stats, marches, kills, and notes."}
+              </div>
             </div>
           </section>
 
