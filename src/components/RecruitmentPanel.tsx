@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useTransition, type Dis
 import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
 import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
-import { parseLastZProfile } from "@/utils/ocrParser";
+import { parseLastZProfileImage } from "@/utils/ocrParser";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 import {
   deleteApplicant,
@@ -491,11 +491,10 @@ export default function RecruitmentPanel({
     setIsScanning(true);
     setMessage(null);
     try {
-      const [ocrResult, nameResult] = await Promise.all([
-        Tesseract.recognize(file, "eng"),
+      const [parsed, nameResult] = await Promise.all([
+        parseLastZProfileImage(file),
         extractNameFromImage(file),
       ]);
-      const parsed = parseLastZProfile(ocrResult.data.text);
       const nextShared = {
         name: nameResult || parsed.name === "Unknown Player" ? nameResult || "" : parsed.name,
         techPower: parsed.powerStats.tech,
@@ -507,7 +506,9 @@ export default function RecruitmentPanel({
         march2Power: 0,
         march3Power: 0,
         march4Power: 0,
-        combatPower: 0,
+        // Recruitment uses combat as a top-level strength signal. When no march breakdown
+        // is available from the screenshot, fall back to the shield total.
+        combatPower: parsed.totalPower,
         kills: parsed.kills,
         notes: "",
       };
