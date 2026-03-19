@@ -755,10 +755,19 @@ export default function RecruitmentPanel({
       if (tab === "applicants") {
         const createdRecords: ApplicantRecord[] = [];
         let successCount = 0;
+        let skippedCount = 0;
 
         for (const row of rows) {
           const draft = toApplicantDraftFromCsv(row);
           if (!draft.name.trim()) {
+            continue;
+          }
+
+          const existingApplicant = applicants.find(
+            (entry) => entry.name.trim().toLowerCase() === draft.name.trim().toLowerCase()
+          );
+          if (existingApplicant) {
+            skippedCount += 1;
             continue;
           }
 
@@ -776,6 +785,9 @@ export default function RecruitmentPanel({
         }
 
         if (successCount === 0) {
+          if (skippedCount > 0) {
+            throw new Error("All applicant rows matched existing names and were skipped.");
+          }
           throw new Error("No valid applicant rows were found in the CSV.");
         }
 
@@ -792,10 +804,14 @@ export default function RecruitmentPanel({
           return merged;
         });
 
-        setMessage({ type: "success", text: `Imported ${successCount} applicant${successCount === 1 ? "" : "s"} from CSV.` });
+        setMessage({
+          type: "success",
+          text: `Applicants import complete. Created: ${successCount}. Skipped duplicates: ${skippedCount}.`,
+        });
       } else {
         const createdRecords: MigrationRecord[] = [];
-        let successCount = 0;
+        let createdCount = 0;
+        let updatedCount = 0;
 
         for (const row of rows) {
           const draft = toMigrationDraftFromCsv(row);
@@ -803,7 +819,12 @@ export default function RecruitmentPanel({
             continue;
           }
 
-          const result = await saveMigrationCandidate(draft);
+          const existingMigration = migrations.find(
+            (entry) => entry.name.trim().toLowerCase() === draft.name.trim().toLowerCase()
+          );
+          const payload = existingMigration ? { ...draft, id: existingMigration.id } : draft;
+
+          const result = await saveMigrationCandidate(payload);
           if (!result.success || !result.record) {
             throw new Error(result.error || `Failed to import migration candidate ${draft.name}.`);
           }
@@ -813,10 +834,14 @@ export default function RecruitmentPanel({
             createdAt: new Date(result.record.createdAt).toISOString(),
             updatedAt: new Date(result.record.updatedAt).toISOString(),
           });
-          successCount += 1;
+          if (existingMigration) {
+            updatedCount += 1;
+          } else {
+            createdCount += 1;
+          }
         }
 
-        if (successCount === 0) {
+        if (createdCount === 0 && updatedCount === 0) {
           throw new Error("No valid migration rows were found in the CSV.");
         }
 
@@ -835,7 +860,7 @@ export default function RecruitmentPanel({
 
         setMessage({
           type: "success",
-          text: `Imported ${successCount} migration candidate${successCount === 1 ? "" : "s"} from CSV.`,
+          text: `Migration import complete. Created: ${createdCount}. Updated duplicates: ${updatedCount}.`,
         });
       }
     } catch (error: unknown) {
