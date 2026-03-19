@@ -286,6 +286,14 @@ function getCsvValue(row: Record<string, string>, ...keys: string[]) {
   return "";
 }
 
+function preferNonZero(current: number, incoming: number) {
+  return current === 0 && incoming > 0 ? incoming : current;
+}
+
+function preferBlank(current: string, incoming: string) {
+  return current.trim() === "" && incoming.trim() !== "" ? incoming : current;
+}
+
 function toApplicantDraftFromCsv(row: Record<string, string>): ApplicantDraft {
   return {
     name: getCsvValue(row, "player name", "name"),
@@ -327,6 +335,50 @@ function toMigrationDraftFromCsv(row: Record<string, string>): MigrationDraft {
     combatPower: 0,
     kills: csvNumber(getCsvValue(row, "kills")),
     notes: getCsvValue(row, "notes"),
+  };
+}
+
+function mergeApplicantDraft(existing: ApplicantRecord, incoming: ApplicantDraft): ApplicantDraft {
+  return {
+    name: existing.name,
+    timezone: preferBlank(existing.timezone, incoming.timezone) || "UTC-6",
+    status: existing.status || incoming.status,
+    techPower: preferNonZero(existing.techPower, incoming.techPower),
+    heroPower: preferNonZero(existing.heroPower, incoming.heroPower),
+    troopPower: preferNonZero(existing.troopPower, incoming.troopPower),
+    modVehiclePower: preferNonZero(existing.modVehiclePower, incoming.modVehiclePower),
+    structurePower: preferNonZero(existing.structurePower, incoming.structurePower),
+    march1Power: preferNonZero(existing.march1Power, incoming.march1Power),
+    march2Power: preferNonZero(existing.march2Power, incoming.march2Power),
+    march3Power: preferNonZero(existing.march3Power, incoming.march3Power),
+    march4Power: preferNonZero(existing.march4Power, incoming.march4Power),
+    combatPower: 0,
+    kills: preferNonZero(existing.kills, incoming.kills),
+    notes: preferBlank(existing.notes, incoming.notes),
+  };
+}
+
+function mergeMigrationDraft(existing: MigrationRecord, incoming: MigrationDraft): MigrationDraft {
+  return {
+    name: existing.name,
+    originalServer: preferBlank(existing.originalServer, incoming.originalServer),
+    originalAlliance: preferBlank(existing.originalAlliance, incoming.originalAlliance),
+    reasonForLeaving: preferBlank(existing.reasonForLeaving, incoming.reasonForLeaving),
+    contactStatus: existing.contactStatus || incoming.contactStatus,
+    category: existing.category || incoming.category || "Regular",
+    status: existing.status || incoming.status,
+    techPower: preferNonZero(existing.techPower, incoming.techPower),
+    heroPower: preferNonZero(existing.heroPower, incoming.heroPower),
+    troopPower: preferNonZero(existing.troopPower, incoming.troopPower),
+    modVehiclePower: preferNonZero(existing.modVehiclePower, incoming.modVehiclePower),
+    structurePower: preferNonZero(existing.structurePower, incoming.structurePower),
+    march1Power: preferNonZero(existing.march1Power, incoming.march1Power),
+    march2Power: preferNonZero(existing.march2Power, incoming.march2Power),
+    march3Power: preferNonZero(existing.march3Power, incoming.march3Power),
+    march4Power: preferNonZero(existing.march4Power, incoming.march4Power),
+    combatPower: 0,
+    kills: preferNonZero(existing.kills, incoming.kills),
+    notes: preferBlank(existing.notes, incoming.notes),
   };
 }
 
@@ -750,7 +802,7 @@ export default function RecruitmentPanel({
       if (tab === "applicants") {
         const createdRecords: ApplicantRecord[] = [];
         let successCount = 0;
-        let skippedCount = 0;
+        let enrichedCount = 0;
 
         for (const row of rows) {
           const draft = toApplicantDraftFromCsv(row);
@@ -761,12 +813,11 @@ export default function RecruitmentPanel({
           const existingApplicant = applicants.find(
             (entry) => entry.name.trim().toLowerCase() === draft.name.trim().toLowerCase()
           );
-          if (existingApplicant) {
-            skippedCount += 1;
-            continue;
-          }
+          const payload = existingApplicant
+            ? { ...mergeApplicantDraft(existingApplicant, draft), id: existingApplicant.id }
+            : draft;
 
-          const result = await saveApplicant(draft);
+          const result = await saveApplicant(payload);
           if (!result.success || !result.record) {
             throw new Error(result.error || `Failed to import applicant ${draft.name}.`);
           }
@@ -776,13 +827,14 @@ export default function RecruitmentPanel({
             createdAt: new Date(result.record.createdAt).toISOString(),
             updatedAt: new Date(result.record.updatedAt).toISOString(),
           });
-          successCount += 1;
+          if (existingApplicant) {
+            enrichedCount += 1;
+          } else {
+            successCount += 1;
+          }
         }
 
-        if (successCount === 0) {
-          if (skippedCount > 0) {
-            throw new Error("All applicant rows matched existing names and were skipped.");
-          }
+        if (successCount === 0 && enrichedCount === 0) {
           throw new Error("No valid applicant rows were found in the CSV.");
         }
 
@@ -801,12 +853,12 @@ export default function RecruitmentPanel({
 
         setMessage({
           type: "success",
-          text: `Applicants import complete. Created: ${successCount}. Skipped duplicates: ${skippedCount}.`,
+          text: `Applicants import complete. Created: ${successCount}. Enriched existing: ${enrichedCount}.`,
         });
       } else {
         const createdRecords: MigrationRecord[] = [];
         let createdCount = 0;
-        let updatedCount = 0;
+        let enrichedCount = 0;
 
         for (const row of rows) {
           const draft = toMigrationDraftFromCsv(row);
@@ -817,7 +869,9 @@ export default function RecruitmentPanel({
           const existingMigration = migrations.find(
             (entry) => entry.name.trim().toLowerCase() === draft.name.trim().toLowerCase()
           );
-          const payload = existingMigration ? { ...draft, id: existingMigration.id } : draft;
+          const payload = existingMigration
+            ? { ...mergeMigrationDraft(existingMigration, draft), id: existingMigration.id }
+            : draft;
 
           const result = await saveMigrationCandidate(payload);
           if (!result.success || !result.record) {
@@ -830,13 +884,13 @@ export default function RecruitmentPanel({
             updatedAt: new Date(result.record.updatedAt).toISOString(),
           });
           if (existingMigration) {
-            updatedCount += 1;
+            enrichedCount += 1;
           } else {
             createdCount += 1;
           }
         }
 
-        if (createdCount === 0 && updatedCount === 0) {
+        if (createdCount === 0 && enrichedCount === 0) {
           throw new Error("No valid migration rows were found in the CSV.");
         }
 
@@ -855,7 +909,7 @@ export default function RecruitmentPanel({
 
         setMessage({
           type: "success",
-          text: `Migration import complete. Created: ${createdCount}. Updated duplicates: ${updatedCount}.`,
+          text: `Migration import complete. Created: ${createdCount}. Enriched existing: ${enrichedCount}.`,
         });
       }
     } catch (error: unknown) {
