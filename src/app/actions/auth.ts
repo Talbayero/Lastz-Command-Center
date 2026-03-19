@@ -21,6 +21,10 @@ type CredentialsInput = {
   confirmPassword?: string;
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function normalizePlayerName(name: string) {
   return name.trim();
 }
@@ -108,9 +112,9 @@ export async function signUpUser(input: CredentialsInput) {
     await createSession(user.id);
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("SIGNUP ERROR:", error);
-    return { success: false, error: error.message || "Failed to create account." };
+    return { success: false, error: getErrorMessage(error, "Failed to create account.") };
   }
 }
 
@@ -153,9 +157,9 @@ export async function loginUser(input: CredentialsInput) {
     await createSession(user.id);
     revalidatePath("/");
     return { success: true, mustChangePassword: user.mustChangePassword };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("LOGIN ERROR:", error);
-    return { success: false, error: error.message || "Failed to sign in." };
+    return { success: false, error: getErrorMessage(error, "Failed to sign in.") };
   }
 }
 
@@ -200,9 +204,9 @@ export async function changePassword(input: {
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("CHANGE PASSWORD ERROR:", error);
-    return { success: false, error: error.message || "Failed to change password." };
+    return { success: false, error: getErrorMessage(error, "Failed to change password.") };
   }
 }
 
@@ -218,9 +222,9 @@ export async function disableOwnAccount() {
     await clearSession();
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("DISABLE ACCOUNT ERROR:", error);
-    return { success: false, error: error.message || "Failed to disable account." };
+    return { success: false, error: getErrorMessage(error, "Failed to disable account.") };
   }
 }
 
@@ -251,9 +255,9 @@ export async function adminUpdateUser(input: {
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ADMIN UPDATE USER ERROR:", error);
-    return { success: false, error: error.message || "Failed to update user." };
+    return { success: false, error: getErrorMessage(error, "Failed to update user.") };
   }
 }
 
@@ -284,9 +288,9 @@ export async function adminCreateUserAccount(input: {
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ADMIN CREATE USER ERROR:", error);
-    return { success: false, error: error.message || "Failed to create account." };
+    return { success: false, error: getErrorMessage(error, "Failed to create account.") };
   }
 }
 
@@ -316,9 +320,9 @@ export async function adminResetUserPassword(input: { userId: string }) {
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ADMIN RESET PASSWORD ERROR:", error);
-    return { success: false, error: error.message || "Failed to reset password." };
+    return { success: false, error: getErrorMessage(error, "Failed to reset password.") };
   }
 }
 
@@ -343,9 +347,9 @@ export async function createRole(input: { name: string; permissions: Partial<Rec
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("CREATE ROLE ERROR:", error);
-    return { success: false, error: error.message || "Failed to create role." };
+    return { success: false, error: getErrorMessage(error, "Failed to create role.") };
   }
 }
 
@@ -383,8 +387,8 @@ export async function updateRole(input: {
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("UPDATE ROLE ERROR:", error);
-    return { success: false, error: error.message || "Failed to update role." };
+    return { success: false, error: getErrorMessage(error, "Failed to update role.") };
   }
 }

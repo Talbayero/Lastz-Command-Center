@@ -1,23 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip, Legend } from "recharts";
 import { useRouter } from "next/navigation";
 
+type RadarPlayerData = {
+  name: string;
+  totalPower: number;
+  techPower: number;
+  heroPower: number;
+  troopPower: number;
+  modVehiclePower: number;
+  structurePower: number;
+};
+
+type RadarAllianceAverage = {
+  techPower: number;
+  heroPower: number;
+  troopPower: number;
+  modVehiclePower: number;
+  structurePower: number;
+};
+
 type RadarProps = {
-  playerData: any;
+  playerData: RadarPlayerData | null;
   allPlayerNames: string[];
-  allianceAverage?: any;
+  allianceAverage?: RadarAllianceAverage;
 };
 
 export default function PlayerRadar({ playerData, allPlayerNames, allianceAverage }: RadarProps) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState(playerData?.name ?? "");
-  if (!playerData) return null;
 
-  useEffect(() => {
-    setSearchTerm(playerData?.name ?? "");
-  }, [playerData?.name]);
+  if (!playerData) return null;
 
   const handlePlayerChange = (name: string) => {
     if (name) {
@@ -39,31 +54,31 @@ export default function PlayerRadar({ playerData, allPlayerNames, allianceAverag
       subject: "Tech",
       A: playerData.techPower,
       B: allianceAverage?.techPower || 0,
-      fullMark: Math.max(playerData.techPower * 1.5, allianceAverage?.techPower * 1.5 || 1000000),
+      fullMark: Math.max(playerData.techPower * 1.5, (allianceAverage?.techPower ?? 0) * 1.5 || 1000000),
     },
     {
       subject: "Hero",
       A: playerData.heroPower,
       B: allianceAverage?.heroPower || 0,
-      fullMark: Math.max(playerData.heroPower * 1.5, allianceAverage?.heroPower * 1.5 || 1000000),
+      fullMark: Math.max(playerData.heroPower * 1.5, (allianceAverage?.heroPower ?? 0) * 1.5 || 1000000),
     },
     {
       subject: "Troops",
       A: playerData.troopPower,
       B: allianceAverage?.troopPower || 0,
-      fullMark: Math.max(playerData.troopPower * 1.5, allianceAverage?.troopPower * 1.5 || 1000000),
+      fullMark: Math.max(playerData.troopPower * 1.5, (allianceAverage?.troopPower ?? 0) * 1.5 || 1000000),
     },
     {
       subject: "Mod Vehicle",
       A: playerData.modVehiclePower,
       B: allianceAverage?.modVehiclePower || 0,
-      fullMark: Math.max(playerData.modVehiclePower * 1.5, allianceAverage?.modVehiclePower * 1.5 || 1000000),
+      fullMark: Math.max(playerData.modVehiclePower * 1.5, (allianceAverage?.modVehiclePower ?? 0) * 1.5 || 1000000),
     },
     {
       subject: "Structures",
       A: playerData.structurePower,
       B: allianceAverage?.structurePower || 0,
-      fullMark: Math.max(playerData.structurePower * 1.5, allianceAverage?.structurePower * 1.5 || 1000000),
+      fullMark: Math.max(playerData.structurePower * 1.5, (allianceAverage?.structurePower ?? 0) * 1.5 || 1000000),
     },
   ];
 

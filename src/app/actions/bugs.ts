@@ -4,6 +4,10 @@ import prisma from "@/utils/db";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/utils/auth";
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export async function submitBug(formData: { reporter?: string, description: string, priority?: string }) {
   try {
     await requirePermission("manageBugs");
@@ -23,9 +27,9 @@ export async function submitBug(formData: { reporter?: string, description: stri
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("BUG SUBMISSION ERROR:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error, "Failed to submit bug.") };
   }
 }
 
@@ -39,8 +43,8 @@ export async function updateBugStatus(id: string, status: string) {
     });
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("BUG UPDATE ERROR:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error, "Failed to update bug.") };
   }
 }

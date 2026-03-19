@@ -23,6 +23,10 @@ type ProfileInput = {
   march4Power: number;
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function normalizeInt(value: unknown) {
   return Math.max(0, Math.round(Number(value) || 0));
 }
@@ -107,9 +111,9 @@ export async function saveProfileData(input: ProfileInput) {
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PROFILE SAVE ERROR:", error);
-    return { success: false, error: error.message || "Failed to update profile." };
+    return { success: false, error: getErrorMessage(error, "Failed to update profile.") };
   }
 }
 
@@ -129,8 +133,8 @@ export async function saveProfileLeaderNotes(input: { playerId: string; leaderNo
 
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PROFILE NOTES ERROR:", error);
-    return { success: false, error: error.message || "Failed to update leader notes." };
+    return { success: false, error: getErrorMessage(error, "Failed to update leader notes.") };
   }
 }

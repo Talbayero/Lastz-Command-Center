@@ -9,6 +9,39 @@ import { savePlayerData } from "@/app/actions/savePlayer";
 import { getPlayers } from "@/app/actions/getPlayers";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 
+type PowerStats = {
+  structure: number;
+  tech: number;
+  troop: number;
+  hero: number;
+  modVehicle: number;
+};
+
+type ProfileStats = {
+  name: string;
+  kills: number;
+  totalPower: number;
+  powerStats: PowerStats;
+};
+
+type SaveStatus =
+  | { type: "success"; msg: string }
+  | { type: "error"; msg: string }
+  | null;
+
+type StatsFormProps = {
+  data: ProfileStats;
+  setData: (value: ProfileStats | ((prev: ProfileStats) => ProfileStats)) => void;
+  players: string[];
+  isPending: boolean;
+  onSave: () => void;
+  lockName?: boolean;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
 async function cropNameBlob(file: File): Promise<Blob | null> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -75,9 +108,9 @@ async function extractNameFromImage(file: File): Promise<string> {
 
   try {
     const result = await Tesseract.recognize(croppedBlob, "eng", {
-      // @ts-ignore
+      // @ts-expect-error Tesseract accepts this runtime option even though the package type omits it.
       tessedit_pageseg_mode: "7",
-    } as any);
+    });
     return result.data.text.replace(/[^a-zA-Z ]/g, "").trim().replace(/\s+/g, " ");
   } catch {
     return "";
@@ -147,7 +180,7 @@ function NameAutocomplete({ value, onChange, players }: { value: string; onChang
 }
 
 // ─── Shared stats form ────────────────────────────────────────────────────────
-function StatsForm({ data, setData, players, isPending, onSave, lockName = false }: any) {
+function StatsForm({ data, setData, players, isPending, onSave, lockName = false }: StatsFormProps) {
   return (
     <div className="flex-col gap-4">
       <div className="flex-col gap-2">
@@ -213,18 +246,18 @@ export default function OcrUploader({
   const [mode, setMode] = useState<"scan" | "manual">("scan");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [scanData, setScanData] = useState<any>(null);
-  const [manualData, setManualData] = useState<any>({ ...EMPTY_STATS, name: initialName });
+  const [scanData, setScanData] = useState<ProfileStats | null>(null);
+  const [manualData, setManualData] = useState<ProfileStats>({ ...EMPTY_STATS, name: initialName });
   const [existingPlayers, setExistingPlayers] = useState<string[]>([]);
-  const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
 
   useEffect(() => { getPlayers().then(setExistingPlayers); }, []);
   useEffect(() => {
-    setManualData((prev: any) => ({ ...prev, name: initialName }));
-    setScanData((prev: any) => (prev ? { ...prev, name: initialName || prev.name } : prev));
+    setManualData((prev) => ({ ...prev, name: initialName }));
+    setScanData((prev) => (prev ? { ...prev, name: initialName || prev.name } : prev));
   }, [initialName]);
 
-  const handleSave = (data: any) => {
+  const handleSave = (data: ProfileStats) => {
     setSaveStatus(null);
     console.log("[Save] Attempting save with:", JSON.stringify(data, null, 2));
     startTransition(async () => {
@@ -239,8 +272,8 @@ export default function OcrUploader({
         } else {
           setSaveStatus({ type: "error", msg: `❌ Save Failed: ${result.error}` });
         }
-      } catch (e: any) {
-        setSaveStatus({ type: "error", msg: `❌ Error: ${e?.message ?? "Unknown error"}` });
+      } catch (error: unknown) {
+        setSaveStatus({ type: "error", msg: `❌ Error: ${getErrorMessage(error)}` });
       }
     });
   };
@@ -351,7 +384,16 @@ export default function OcrUploader({
                   <CheckCircle2 size={20} />
                   <h4 style={{ margin: 0 }}>Verify Combat Data</h4>
                 </div>
-                <StatsForm data={scanData} setData={setScanData} players={existingPlayers} lockName={lockName}
+                <StatsForm
+                  data={scanData}
+                  setData={(value) =>
+                    setScanData((prev) => {
+                      const current = prev ?? scanData;
+                      return typeof value === "function" ? value(current) : value;
+                    })
+                  }
+                  players={existingPlayers}
+                  lockName={lockName}
                   isPending={isPending} onSave={() => handleSave(scanData)} />
               </div>
             )}

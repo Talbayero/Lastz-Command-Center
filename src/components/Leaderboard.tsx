@@ -1,8 +1,10 @@
 import { getLeaderboardData } from "@/utils/dashboardData";
 import Link from "next/link";
 
+type LeaderboardPlayer = Awaited<ReturnType<typeof getLeaderboardData>>[number];
+
 export default async function Leaderboard({ selectedName }: { selectedName?: string }) {
-  let players: any[] = [];
+  let players: LeaderboardPlayer[] = [];
   try {
     players = await getLeaderboardData();
   } catch (e) {

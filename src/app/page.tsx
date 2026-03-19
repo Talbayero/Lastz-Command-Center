@@ -19,6 +19,42 @@ import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 import { getDefaultWeights, normalizeWeights } from "@/utils/recruitmentScoring";
 
+type RecruitmentApplicantRow = Awaited<ReturnType<typeof prisma.allianceApplicant.findMany>>[number];
+type RecruitmentMigrationRow = Awaited<ReturnType<typeof prisma.migrationCandidate.findMany>>[number];
+type ProfileViewData = {
+  id: string;
+  name: string;
+  totalPower: number;
+  kills: number;
+  latestScore: number;
+  gloryWarStatus: string;
+  march1Power: number;
+  march2Power: number;
+  march3Power: number;
+  march4Power: number;
+  combatPower: number;
+  updatedAt: string;
+  structurePower: number;
+  techPower: number;
+  troopPower: number;
+  heroPower: number;
+  modVehiclePower: number;
+  rank: number;
+  todayDuelScore: number | null;
+  todayDuelRank: number | null;
+  duelRequirement: number;
+  duelRequirementName: string;
+  duelCompliance: "Met" | "Below Requirement" | "Missing Data";
+  leaderNotes: string;
+  snapshots: Array<{
+    id: string;
+    createdAt: string;
+    totalPower: number;
+    kills: number;
+    score: number;
+  }>;
+};
+
 export default async function Home(props: { searchParams: Promise<{ name?: string; view?: string }> }) {
   const searchParams = await props.searchParams;
   const targetName = searchParams.name;
@@ -98,9 +134,9 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   }> = [];
   let duelLoadError: string | null = null;
   let recruitmentLoadError: string | null = null;
-  let profileData: any = null;
-  let recruitmentApplicants: any[] = [];
-  let recruitmentMigrations: any[] = [];
+  let profileData: ProfileViewData | null = null;
+  let recruitmentApplicants: RecruitmentApplicantRow[] = [];
+  let recruitmentMigrations: RecruitmentMigrationRow[] = [];
   let recruitmentApplicantWeights = getDefaultWeights("applicants");
   let recruitmentMigrationWeights = getDefaultWeights("migrations");
 
@@ -121,7 +157,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
           },
         }),
       ]);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("ALLIANCE DUEL PAGE LOAD ERROR:", error);
       duelLoadError = "Alliance Duel data is temporarily unavailable. Refresh in a moment and try again.";
     }
@@ -150,7 +186,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
       recruitmentMigrationWeights = normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations"));
       recruitmentApplicants = applicants;
       recruitmentMigrations = migrations;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("RECRUITMENT PAGE LOAD ERROR:", error);
       recruitmentLoadError = "Recruitment data is temporarily unavailable. Refresh in a moment and try again.";
     }
@@ -465,7 +501,12 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
             <div className="cyber-card flex-col gap-4" style={{ marginTop: "1.5rem" }}>
               <h3 style={{ color: "var(--accent-purple)" }}>Combat Balance Radar: {effectiveName}</h3>
               <p style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Comparing individual profile against the alliance average.</p>
-              <PlayerRadar playerData={selectedPlayerData} allPlayerNames={allPlayerNames} allianceAverage={allianceAvg} />
+              <PlayerRadar
+                key={selectedPlayerData?.name ?? "empty-player-radar"}
+                playerData={selectedPlayerData}
+                allPlayerNames={allPlayerNames}
+                allianceAverage={allianceAvg}
+              />
             </div>
           )}
         </section>

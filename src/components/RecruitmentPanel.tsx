@@ -16,7 +16,6 @@ import {
 import {
   computeRecruitmentScore,
   getCategoryFromScore,
-  getDefaultWeights,
   getFormulaLabel,
   getRecommendationBand,
   totalWeight,
@@ -68,6 +67,38 @@ type MigrationRecord = {
   createdAt: string;
   updatedAt: string;
 };
+
+type ApplicantDraft = SharedDraft & {
+  timezone: string;
+  status: string;
+};
+
+type MigrationDraft = SharedDraft & {
+  originalServer: string;
+  originalAlliance: string;
+  reasonForLeaving: string;
+  contactStatus: string;
+  category: string;
+  status: string;
+};
+
+type RecruitmentRecommendation = string;
+
+type ApplicantRow = ApplicantRecord & {
+  score: number;
+  recommendation: RecruitmentRecommendation;
+  effectiveCategory: string;
+  hasWarning: boolean;
+};
+
+type MigrationRow = MigrationRecord & {
+  score: number;
+  recommendation: RecruitmentRecommendation;
+  effectiveCategory: string;
+  hasWarning: boolean;
+};
+
+type RecruitmentRow = ApplicantRow | MigrationRow;
 
 type SharedDraft = {
   name: string;
@@ -162,7 +193,7 @@ const emptyApplicantDraft = {
   ...emptySharedDraft,
   timezone: "UTC-6",
   status: "New",
-};
+} satisfies ApplicantDraft;
 
 const emptyMigrationDraft = {
   ...emptySharedDraft,
@@ -172,7 +203,15 @@ const emptyMigrationDraft = {
   contactStatus: "Not Contacted",
   category: "Regular",
   status: "Scouted",
-};
+} satisfies MigrationDraft;
+
+function isMigrationRow(row: RecruitmentRow): row is MigrationRow {
+  return "originalServer" in row;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
 
 function marchTotal(entry: Pick<SharedDraft, "march1Power" | "march2Power" | "march3Power" | "march4Power">) {
   return entry.march1Power + entry.march2Power + entry.march3Power + entry.march4Power;
@@ -225,8 +264,8 @@ function compareValues(a: string | number | boolean, b: string | number | boolea
 }
 
 function compareRecruitmentRows(
-  a: any,
-  b: any,
+  a: RecruitmentRow,
+  b: RecruitmentRow,
   sort: { key: ApplicantSortKey | MigrationSortKey; direction: SortDirection }
 ) {
   switch (sort.key) {
@@ -235,11 +274,11 @@ function compareRecruitmentRows(
     case "name":
       return compareValues(a.name, b.name, sort.direction);
     case "timezone":
-      return compareValues(a.timezone ?? "", b.timezone ?? "", sort.direction);
+      return compareValues(isMigrationRow(a) ? "" : a.timezone, isMigrationRow(b) ? "" : b.timezone, sort.direction);
     case "originalServer":
-      return compareValues(a.originalServer ?? "", b.originalServer ?? "", sort.direction);
+      return compareValues(isMigrationRow(a) ? a.originalServer : "", isMigrationRow(b) ? b.originalServer : "", sort.direction);
     case "originalAlliance":
-      return compareValues(a.originalAlliance ?? "", b.originalAlliance ?? "", sort.direction);
+      return compareValues(isMigrationRow(a) ? a.originalAlliance : "", isMigrationRow(b) ? b.originalAlliance : "", sort.direction);
     case "category":
       return compareValues(a.effectiveCategory, b.effectiveCategory, sort.direction);
     case "status":
@@ -310,9 +349,9 @@ async function extractNameFromImage(file: File): Promise<string> {
 
   try {
     const result = await Tesseract.recognize(croppedBlob, "eng", {
-      // @ts-ignore
+      // @ts-expect-error Tesseract accepts this runtime option even though the package type omits it.
       tessedit_pageseg_mode: "7",
-    } as any);
+    });
     return result.data.text.replace(/[^a-zA-Z ]/g, "").trim().replace(/\s+/g, " ");
   } catch {
     return "";
@@ -340,8 +379,8 @@ export default function RecruitmentPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [applicants, setApplicants] = useState(initialApplicants);
   const [migrations, setMigrations] = useState(initialMigrations);
-  const [applicantDraft, setApplicantDraft] = useState(emptyApplicantDraft);
-  const [migrationDraft, setMigrationDraft] = useState(emptyMigrationDraft);
+  const [applicantDraft, setApplicantDraft] = useState<ApplicantDraft>(emptyApplicantDraft);
+  const [migrationDraft, setMigrationDraft] = useState<MigrationDraft>(emptyMigrationDraft);
   const [applicantEditId, setApplicantEditId] = useState<string | null>(null);
   const [migrationEditId, setMigrationEditId] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -386,7 +425,7 @@ export default function RecruitmentPanel({
     return () => window.clearTimeout(timeout);
   }, [applicantWeights, migrationWeights, tab, canManage]);
 
-  const applicantRows = useMemo(
+  const applicantRows = useMemo<ApplicantRow[]>(
     () =>
       applicants
         .map((entry) => {
@@ -402,7 +441,7 @@ export default function RecruitmentPanel({
         .sort((a, b) => compareRecruitmentRows(a, b, applicantSort)),
     [applicants, applicantWeights, applicantSort]
   );
-  const migrationRows = useMemo(
+  const migrationRows = useMemo<MigrationRow[]>(
     () =>
       migrations
         .map((entry) => {
@@ -419,8 +458,8 @@ export default function RecruitmentPanel({
     [migrations, migrationWeights, migrationSort]
   );
 
-  const currentRows = useMemo(() => {
-    const rows = tab === "applicants" ? applicantRows : migrationRows;
+  const currentRows = useMemo<RecruitmentRow[]>(() => {
+    const rows: RecruitmentRow[] = tab === "applicants" ? applicantRows : migrationRows;
     const query = searchQuery.trim().toLowerCase();
     if (!query) return rows;
     return rows.filter((row) => row.name.toLowerCase().includes(query));
@@ -430,14 +469,14 @@ export default function RecruitmentPanel({
     const rows = currentRows;
     return {
       total: rows.length,
-      strongFit: rows.filter((row: any) => row.recommendation === "Strong Fit").length,
-      borderline: rows.filter((row: any) => row.recommendation === "Borderline").length,
-      lowPriority: rows.filter((row: any) => row.recommendation === "Low Priority").length,
+      strongFit: rows.filter((row) => row.recommendation === "Strong Fit").length,
+      borderline: rows.filter((row) => row.recommendation === "Borderline").length,
+      lowPriority: rows.filter((row) => row.recommendation === "Low Priority").length,
       byCategory:
         tab === "migrations"
           ? recruitmentCategories.map((category) => ({
               category,
-              count: rows.filter((row: any) => row.effectiveCategory === category).length,
+              count: rows.filter((row) => row.effectiveCategory === category).length,
             }))
           : [],
     };
@@ -481,8 +520,8 @@ export default function RecruitmentPanel({
       }
 
       setMessage({ type: "success", text: "Screenshot parsed into a draft. Review the fields before saving." });
-    } catch (error: any) {
-      setMessage({ type: "error", text: error?.message || "Failed to parse screenshot." });
+    } catch (error: unknown) {
+      setMessage({ type: "error", text: getErrorMessage(error) || "Failed to parse screenshot." });
     } finally {
       setIsScanning(false);
     }
@@ -929,7 +968,11 @@ export default function RecruitmentPanel({
                 </tr>
               </thead>
               <tbody>
-                {currentRows.map((row, index) => (
+                {currentRows.map((row, index) => {
+                  const migrationRow: MigrationRow | null = isMigrationRow(row) ? row : null;
+                  const applicantRow: ApplicantRow | null = isMigrationRow(row) ? null : row;
+
+                  return (
                   <Fragment key={row.id}>
                     <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                       <BodyCell>
@@ -947,7 +990,7 @@ export default function RecruitmentPanel({
                         </button>
                       </BodyCell>
                       <BodyCell>
-                        {(row as any).hasWarning ? (
+                        {row.hasWarning ? (
                           <span title="One or more important stats are zero and should be reviewed" style={{ color: "#ffd166", display: "inline-flex", alignItems: "center" }}>
                             <AlertTriangle size={15} />
                           </span>
@@ -956,18 +999,18 @@ export default function RecruitmentPanel({
                         )}
                       </BodyCell>
                       <BodyCell strong>{`${index + 1}. ${row.name}`}</BodyCell>
-                      {tab === "migrations" && <BodyCell>{(row as any).originalServer}</BodyCell>}
-                      {tab === "migrations" && <BodyCell>{(row as any).originalAlliance}</BodyCell>}
-                      {tab === "applicants" && <BodyCell>{(row as any).timezone || "-"}</BodyCell>}
-                      {tab === "migrations" && <BodyCell><span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span></BodyCell>}
+                      {migrationRow && <BodyCell>{migrationRow.originalServer}</BodyCell>}
+                      {migrationRow && <BodyCell>{migrationRow.originalAlliance}</BodyCell>}
+                      {applicantRow && <BodyCell>{applicantRow.timezone || "-"}</BodyCell>}
+                      {migrationRow && <BodyCell><span style={categoryBadgeStyle(migrationRow.effectiveCategory)}>{migrationRow.effectiveCategory}</span></BodyCell>}
                       <BodyCell>{row.status}</BodyCell>
                       <BodyCell>{row.score.toFixed(2)}</BodyCell>
-                      <BodyCell><span style={badgeStyle((row as any).recommendation)}>{(row as any).recommendation}</span></BodyCell>
+                      <BodyCell><span style={badgeStyle(row.recommendation)}>{row.recommendation}</span></BodyCell>
                       <BodyCell>{formatDate(row.updatedAt)}</BodyCell>
                       {canManage && (
                         <BodyCell>
                           <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
-                            <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))} aria-label="Edit record">
+                            <button className="cyber-button" onClick={() => (migrationRow ? editMigration(migrationRow) : editApplicant(applicantRow!))} aria-label="Edit record">
                               <Pencil size={14} />
                             </button>
                             <button className="cyber-button" style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }} onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}>
@@ -981,8 +1024,8 @@ export default function RecruitmentPanel({
                       <tr style={{ borderBottom: "1px solid var(--border-subtle)", backgroundColor: "rgba(255,255,255,0.02)" }}>
                         <td colSpan={tab === "migrations" ? (canManage ? 10 : 9) : canManage ? 9 : 8} style={{ padding: "1rem" }}>
                           <div style={miniStatsGridStyle}>
-                            <MiniMetric label="Verify" value={(row as any).hasWarning ? "Needs Review" : "OK"} />
-                            {tab === "migrations" && <MiniMetric label="Contact" value={(row as any).contactStatus} />}
+                            <MiniMetric label="Verify" value={row.hasWarning ? "Needs Review" : "OK"} />
+                            {migrationRow && <MiniMetric label="Contact" value={migrationRow.contactStatus} />}
                             <MiniMetric label="Troop" value={row.troopPower.toLocaleString()} />
                             <MiniMetric label="Combat" value={effectiveCombatPower(row).toLocaleString()} />
                             <MiniMetric label="March 1" value={row.march1Power.toLocaleString()} />
@@ -995,11 +1038,11 @@ export default function RecruitmentPanel({
                             <MiniMetric label="Mod Vehicle" value={row.modVehiclePower.toLocaleString()} />
                             <MiniMetric label="Structure" value={row.structurePower.toLocaleString()} />
                           </div>
-                          {tab === "migrations" && ((row as any).reasonForLeaving || (row as any).notes) && (
+                          {migrationRow && (migrationRow.reasonForLeaving || migrationRow.notes) && (
                             <div style={{ marginTop: "0.9rem", color: "var(--text-muted)", fontSize: "0.84rem" }}>
-                              {(row as any).reasonForLeaving ? `Reason: ${(row as any).reasonForLeaving}` : ""}
-                              {(row as any).reasonForLeaving && (row as any).notes ? " | " : ""}
-                              {(row as any).notes ? `Notes: ${(row as any).notes}` : ""}
+                              {migrationRow.reasonForLeaving ? `Reason: ${migrationRow.reasonForLeaving}` : ""}
+                              {migrationRow.reasonForLeaving && migrationRow.notes ? " | " : ""}
+                              {migrationRow.notes ? `Notes: ${migrationRow.notes}` : ""}
                             </div>
                           )}
                           {tab === "applicants" && row.notes && (
@@ -1043,36 +1086,40 @@ export default function RecruitmentPanel({
                       </tr>
                     )}
                   </Fragment>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </section>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1rem" }}>
-          {currentRows.map((row, index) => (
+          {currentRows.map((row, index) => {
+            const migrationRow: MigrationRow | null = isMigrationRow(row) ? row : null;
+            const applicantRow: ApplicantRow | null = isMigrationRow(row) ? null : row;
+            return (
             <section key={row.id} className="cyber-card flex-col gap-3">
               <div className="flex-row justify-between gap-3" style={{ alignItems: "flex-start" }}>
                 <div>
                   <div style={summaryLabelStyle}>Rank #{index + 1}</div>
                   <h3 style={{ color: "var(--accent-neon)", marginTop: "0.35rem" }}>{row.name}</h3>
                 </div>
-                <span style={badgeStyle((row as any).recommendation)}>{(row as any).recommendation}</span>
+                <span style={badgeStyle(row.recommendation)}>{row.recommendation}</span>
               </div>
               <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                {tab === "applicants"
-                  ? `Timezone: ${(row as any).timezone || "-"}`
-                  : `Server ${(row as any).originalServer || "-"} | ${(row as any).originalAlliance || "-"}` 
+                {applicantRow
+                  ? `Timezone: ${applicantRow.timezone || "-"}`
+                  : `Server ${migrationRow?.originalServer || "-"} | ${migrationRow?.originalAlliance || "-"}`
                 }
               </div>
-              {tab === "migrations" && (
+              {migrationRow && (
                 <div>
-                  <span style={categoryBadgeStyle((row as any).effectiveCategory)}>{(row as any).effectiveCategory}</span>
+                  <span style={categoryBadgeStyle(migrationRow.effectiveCategory)}>{migrationRow.effectiveCategory}</span>
                 </div>
               )}
               <div style={miniStatsGridStyle}>
                 <MiniMetric label="Status" value={row.status} />
-                {tab === "migrations" && <MiniMetric label="Contact" value={(row as any).contactStatus} />}
+                {migrationRow && <MiniMetric label="Contact" value={migrationRow.contactStatus} />}
                 <MiniMetric label="Troop" value={row.troopPower.toLocaleString()} />
                 <MiniMetric label="Combat" value={effectiveCombatPower(row).toLocaleString()} />
                 <MiniMetric label="Kills" value={row.kills.toLocaleString()} />
@@ -1081,7 +1128,7 @@ export default function RecruitmentPanel({
               <div style={{ color: "var(--text-muted)", fontSize: "0.84rem" }}>{row.notes || "No notes yet."}</div>
               {canManage && (
                 <div className="flex-row justify-between gap-2" style={{ flexWrap: "wrap" }}>
-                  <button className="cyber-button" onClick={() => (tab === "applicants" ? editApplicant(row as ApplicantRecord) : editMigration(row as MigrationRecord))} aria-label="Edit record">
+                  <button className="cyber-button" onClick={() => (migrationRow ? editMigration(migrationRow) : editApplicant(applicantRow!))} aria-label="Edit record">
                     <Pencil size={14} />
                   </button>
                   <button className="cyber-button" style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }} onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}>
@@ -1090,14 +1137,21 @@ export default function RecruitmentPanel({
                 </div>
               )}
             </section>
-          ))}
+          );
+        })}
         </div>
       )}
     </div>
   );
 }
 
-function ApplicantForm({ draft, setDraft }: any) {
+function ApplicantForm({
+  draft,
+  setDraft,
+}: {
+  draft: ApplicantDraft;
+  setDraft: Dispatch<SetStateAction<ApplicantDraft>>;
+}) {
   return (
     <div className="profile-form-grid">
       <LabeledField label="Player Name"><input className="cyber-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></LabeledField>
@@ -1123,7 +1177,13 @@ function ApplicantForm({ draft, setDraft }: any) {
   );
 }
 
-function MigrationForm({ draft, setDraft }: any) {
+function MigrationForm({
+  draft,
+  setDraft,
+}: {
+  draft: MigrationDraft;
+  setDraft: Dispatch<SetStateAction<MigrationDraft>>;
+}) {
   return (
     <div className="profile-form-grid">
       <LabeledField label="Player Name"><input className="cyber-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></LabeledField>
@@ -1155,7 +1215,13 @@ function MigrationForm({ draft, setDraft }: any) {
   );
 }
 
-function SharedStatFields({ draft, setDraft }: any) {
+function SharedStatFields<T extends SharedDraft>({
+  draft,
+  setDraft,
+}: {
+  draft: T;
+  setDraft: Dispatch<SetStateAction<T>>;
+}) {
   const fields = [
     ["Tech Power", "techPower"],
     ["Hero Power", "heroPower"],

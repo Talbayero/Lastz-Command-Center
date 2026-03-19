@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Tesseract from "tesseract.js";
-import { Upload, Loader2, CheckCircle2 } from "lucide-react";
+import { Upload, Loader2 } from "lucide-react";
 import {
   ALLIANCE_DUEL_DAYS,
   type AllianceDuelDayKey,
@@ -51,6 +51,32 @@ type UploadReviewEntry = {
   rank: number | null;
 };
 
+type DuelOcrWord = {
+  text: string;
+  bbox?: {
+    x0?: number;
+    y0?: number;
+    y1?: number;
+  };
+};
+
+type PositionedWord = {
+  text: string;
+  x0: number;
+  y0: number;
+  y1: number;
+};
+
+type LocalParsedEntry = {
+  name: string;
+  rank: number | null;
+  score: number;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
 const scoreTypeLabels: Record<AllianceDuelScoreType, string> = {
   daily: "Daily Rank",
   weekly: "Weekly Rank",
@@ -68,7 +94,6 @@ export default function AllianceDuelPanel({
 }) {
   const [isPending, startTransition] = useTransition();
   const [players, setPlayers] = useState(initialPlayers);
-  const [requirements, setRequirements] = useState(initialRequirements);
   const [activeScoreType, setActiveScoreType] = useState<AllianceDuelScoreType>("daily");
   const [activeDayKey, setActiveDayKey] = useState<AllianceDuelDayKey>("Mon");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -153,7 +178,6 @@ export default function AllianceDuelPanel({
     startTransition(async () => {
       const result = await saveAllianceDuelRequirement(requirement);
       if (result.success) {
-        setRequirements((prev) => prev.map((entry) => (entry.dayKey === dayKey ? requirement : entry)));
         setMessage({ type: "success", text: `${dayKey} requirement saved.` });
       } else {
         setMessage({ type: "error", text: result.error || "Failed to save requirement." });
@@ -415,8 +439,8 @@ export default function AllianceDuelPanel({
             ? `Updated ${totalAppliedCount} players from ${fileList.length} screenshot${fileList.length === 1 ? "" : "s"}. Unmatched: ${Array.from(unmatchedNames).join(", ")}`
             : `Updated ${totalAppliedCount} players from ${fileList.length} screenshot${fileList.length === 1 ? "" : "s"}.`,
       });
-    } catch (error: any) {
-      setMessage({ type: "error", text: error?.message || "Upload failed." });
+    } catch (error: unknown) {
+      setMessage({ type: "error", text: getErrorMessage(error) || "Upload failed." });
     } finally {
       setIsUploading(false);
       setIsDragging(false);
@@ -844,13 +868,14 @@ async function parseAllianceDuelImageLocally(blob: Blob) {
   return dedupeLocalEntries(passes.flat());
 }
 
-async function recognizeDuelRows(dataUrl: string) {
+async function recognizeDuelRows(dataUrl: string): Promise<LocalParsedEntry[]> {
   const result = await Tesseract.recognize(dataUrl, "eng", {
+    // @ts-expect-error Tesseract accepts these runtime OCR options even though the package type omits them.
     tessedit_pageseg_mode: "6",
     preserve_interword_spaces: "1",
-  } as any);
-  const ocrWords = (result.data as any)?.words;
-  const words: any[] = Array.isArray(ocrWords) ? ocrWords : [];
+  });
+  const ocrWords = (result.data as { words?: DuelOcrWord[] }).words;
+  const words: DuelOcrWord[] = Array.isArray(ocrWords) ? ocrWords : [];
 
   const groupedRows = groupWordsIntoRows(
     words
@@ -865,7 +890,7 @@ async function recognizeDuelRows(dataUrl: string) {
 
   return groupedRows
     .map(parseOcrRow)
-    .filter((entry): entry is { name: string; rank: number | null; score: number } => Boolean(entry && entry.name && entry.score > 0));
+    .filter((entry): entry is LocalParsedEntry => Boolean(entry && entry.name && entry.score > 0));
 }
 
 async function blobToDataUrl(blob: Blob) {
@@ -924,13 +949,14 @@ async function preprocessDuelImageForOcr(blob: Blob) {
   });
 }
 
-function groupWordsIntoRows(words: Array<{ text: string; x0: number; y0: number; y1: number }>) {
+function groupWordsIntoRows(words: PositionedWord[]) {
   const sorted = words.slice().sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-  const rows: Array<Array<{ text: string; x0: number; y0: number; y1: number }>> = [];
+  const rows: PositionedWord[][] = [];
 
   for (const word of sorted) {
     const targetRow = rows.find((row) => {
-      const rowCenter = average(row.map((entry) => (entry.y0 + entry.y1) / 2));
+      const rowCenter =
+        row.reduce((sum, entry) => sum + (entry.y0 + entry.y1) / 2, 0) / Math.max(row.length, 1);
       const wordCenter = (word.y0 + word.y1) / 2;
       return Math.abs(rowCenter - wordCenter) <= 24;
     });
@@ -945,7 +971,7 @@ function groupWordsIntoRows(words: Array<{ text: string; x0: number; y0: number;
   return rows.map((row) => row.sort((a, b) => a.x0 - b.x0));
 }
 
-function parseOcrRow(row: Array<{ text: string; x0: number; y0: number; y1: number }>) {
+function parseOcrRow(row: PositionedWord[]): LocalParsedEntry | null {
   const scoreToken = [...row]
     .reverse()
     .find((entry) => /\d[\d,._]{4,}/.test(entry.text) || /^\d{5,}$/.test(entry.text.replace(/[^\d]/g, "")));
@@ -973,7 +999,7 @@ function parseOcrRow(row: Array<{ text: string; x0: number; y0: number; y1: numb
   return { name, rank, score };
 }
 
-function dedupeLocalEntries(entries: Array<{ name: string; rank: number | null; score: number }>) {
+function dedupeLocalEntries(entries: LocalParsedEntry[]) {
   const seen = new Set<string>();
   return entries.filter((entry) => {
     const key = `${entry.name.toLowerCase().replace(/[^a-z0-9]/g, "")}::${entry.score}`;
@@ -991,10 +1017,6 @@ function normalizeLocalScore(value: unknown) {
 function normalizeLocalRank(value: unknown) {
   const digitsOnly = String(value ?? "").replace(/[^\d]/g, "");
   return digitsOnly ? Number(digitsOnly) : null;
-}
-
-function average(values: number[]) {
-  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
 }
 
 const scopeTabContainerStyle: React.CSSProperties = {

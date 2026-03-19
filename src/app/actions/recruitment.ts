@@ -48,6 +48,10 @@ export type MigrationCandidateInput = RecruitmentStatInput & {
   status: string;
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function normalizeInt(value: unknown) {
   return Math.max(0, Math.round(Number(value) || 0));
 }
@@ -114,9 +118,9 @@ export async function saveRecruitmentScoringConfig(input: {
 
     revalidatePath("/");
     return { success: true, weights };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("SAVE RECRUITMENT SCORING CONFIG ERROR:", error);
-    return { success: false, error: error.message || "Failed to save recruitment scoring config." };
+    return { success: false, error: getErrorMessage(error, "Failed to save recruitment scoring config.") };
   }
 }
 
@@ -158,9 +162,9 @@ export async function saveApplicant(input: ApplicantInput) {
 
     revalidatePath("/");
     return { success: true, record };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("SAVE APPLICANT ERROR:", error);
-    return { success: false, error: error.message || "Failed to save applicant." };
+    return { success: false, error: getErrorMessage(error, "Failed to save applicant.") };
   }
 }
 
@@ -219,9 +223,9 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
 
     revalidatePath("/");
     return { success: true, record };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("SAVE MIGRATION CANDIDATE ERROR:", error);
-    return { success: false, error: error.message || "Failed to save migration candidate." };
+    return { success: false, error: getErrorMessage(error, "Failed to save migration candidate.") };
   }
 }
 
@@ -231,9 +235,9 @@ export async function deleteApplicant(input: { id: string }) {
     await prisma.allianceApplicant.delete({ where: { id: input.id } });
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("DELETE APPLICANT ERROR:", error);
-    return { success: false, error: error.message || "Failed to delete applicant." };
+    return { success: false, error: getErrorMessage(error, "Failed to delete applicant.") };
   }
 }
 
@@ -243,8 +247,8 @@ export async function deleteMigrationCandidate(input: { id: string }) {
     await prisma.migrationCandidate.delete({ where: { id: input.id } });
     revalidatePath("/");
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("DELETE MIGRATION CANDIDATE ERROR:", error);
-    return { success: false, error: error.message || "Failed to delete migration candidate." };
+    return { success: false, error: getErrorMessage(error, "Failed to delete migration candidate.") };
   }
 }
