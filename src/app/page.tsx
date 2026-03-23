@@ -69,14 +69,43 @@ type ProfileViewData = {
   }>;
 };
 
+function toIsoString(value: string | Date | null | undefined) {
+  if (!value) {
+    return new Date(0).toISOString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date(0).toISOString() : parsed.toISOString();
+}
+
+function toDate(value: string | Date | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 export default async function Home(props: { searchParams: Promise<{ name?: string; view?: string }> }) {
   const shouldLogPerf = process.env.ENABLE_PERF_LOGS === "true";
+  // eslint-disable-next-line react-hooks/purity
   const pageStart = Date.now();
   const perfMarks: string[] = [];
   const timed = async <T,>(label: string, task: () => Promise<T>) => {
+    // eslint-disable-next-line react-hooks/purity
     const start = Date.now();
     const result = await task();
     if (shouldLogPerf) {
+      // eslint-disable-next-line react-hooks/purity
       perfMarks.push(`${label}:${Date.now() - start}ms`);
     }
     return result;
@@ -91,6 +120,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     const authPlayers = await timed("authPlayers", () => getPlayerNamesCached());
 
     if (shouldLogPerf) {
+      // eslint-disable-next-line react-hooks/purity
       console.info(`[PERF] view=auth total=${Date.now() - pageStart}ms ${perfMarks.join(" | ")}`);
     }
 
@@ -251,7 +281,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         march3Power: profilePlayer.march3Power,
         march4Power: profilePlayer.march4Power,
         combatPower,
-        updatedAt: profilePlayer.updatedAt.toISOString(),
+        updatedAt: toIsoString(profilePlayer.updatedAt),
         structurePower: latestSnapshot?.structurePower ?? 0,
         techPower: latestSnapshot?.techPower ?? 0,
         troopPower: latestSnapshot?.troopPower ?? 0,
@@ -266,7 +296,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         leaderNotes: profilePlayer.leaderNotes,
         snapshots: profilePlayer.snapshots.map((snapshot) => ({
           id: snapshot.id,
-          createdAt: snapshot.createdAt.toISOString(),
+          createdAt: toIsoString(snapshot.createdAt),
           totalPower: snapshot.totalPower,
           kills: snapshot.kills,
           score: snapshot.score,
@@ -279,6 +309,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const allPlayerNames = allPlayers.map((player) => player.name);
 
   if (shouldLogPerf) {
+    // eslint-disable-next-line react-hooks/purity
     console.info(`[PERF] view=${currentView} total=${Date.now() - pageStart}ms ${perfMarks.join(" | ")}`);
   }
 
@@ -391,13 +422,13 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                 <RecruitmentPanel
                   initialApplicants={recruitmentApplicants.map((entry) => ({
                     ...entry,
-                    createdAt: entry.createdAt.toISOString(),
-                    updatedAt: entry.updatedAt.toISOString(),
+                    createdAt: toIsoString(entry.createdAt),
+                    updatedAt: toIsoString(entry.updatedAt),
                   }))}
                   initialMigrations={recruitmentMigrations.map((entry) => ({
                     ...entry,
-                    createdAt: entry.createdAt.toISOString(),
-                    updatedAt: entry.updatedAt.toISOString(),
+                    createdAt: toIsoString(entry.createdAt),
+                    updatedAt: toIsoString(entry.updatedAt),
                   }))}
                   initialApplicantWeights={recruitmentApplicantWeights}
                   initialMigrationWeights={recruitmentMigrationWeights}
@@ -486,7 +517,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                     disabledByUser: account?.disabledByUser ?? false,
                     isOnline:
                       Boolean(account?.sessions.length) &&
-                      Boolean(account?.lastLoginAt && account.lastLoginAt > new Date(Date.now() - 15 * 60 * 1000)),
+                      // eslint-disable-next-line react-hooks/purity
+                      Boolean((toDate(account?.lastLoginAt)?.getTime() ?? 0) > Date.now() - 15 * 60 * 1000),
                     lastLoginAt: account?.lastLoginAt ?? null,
                   };
                 })}

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import BugReportModal from "@/components/BugReportModal";
 import AccountPanel from "@/components/AccountPanel";
@@ -7,6 +7,9 @@ import { getCurrentUser, hasPermission } from "@/utils/auth";
 export const metadata: Metadata = {
   title: "BOM Command Center",
   description: "Alliance performance tracking dashboard for BOM",
+};
+
+export const viewport: Viewport = {
   themeColor: "#09090b",
 };
 
