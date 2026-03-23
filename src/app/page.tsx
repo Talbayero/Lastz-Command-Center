@@ -1,22 +1,24 @@
 import Link from "next/link";
-import OcrUploader from "@/components/OcrUploader";
+import dynamic from "next/dynamic";
 import Leaderboard from "@/components/Leaderboard";
-import PlayerRadar from "@/components/PlayerRadar";
-import ScoringEngine from "@/components/ScoringEngine";
-import Roster from "@/components/Roster";
-import BugList from "@/components/BugList";
 import AllianceOverview from "@/components/AllianceOverview";
-import AllianceDuelPanel from "@/components/AllianceDuelPanel";
-import RecruitmentPanel from "@/components/RecruitmentPanel";
-import AuthPanel from "@/components/AuthPanel";
-import AdminPanel from "@/components/AdminPanel";
-import ProfilePanel from "@/components/ProfilePanel";
 import prisma from "@/utils/db";
 import { getCurrentUser, hasPermission } from "@/utils/auth";
 import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
 import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 import { getDefaultWeights, normalizeWeights } from "@/utils/recruitmentScoring";
+
+const AuthPanel = dynamic(() => import("@/components/AuthPanel"));
+const OcrUploader = dynamic(() => import("@/components/OcrUploader"));
+const PlayerRadar = dynamic(() => import("@/components/PlayerRadar"));
+const ScoringEngine = dynamic(() => import("@/components/ScoringEngine"));
+const Roster = dynamic(() => import("@/components/Roster"));
+const BugList = dynamic(() => import("@/components/BugList"));
+const AllianceDuelPanel = dynamic(() => import("@/components/AllianceDuelPanel"));
+const RecruitmentPanel = dynamic(() => import("@/components/RecruitmentPanel"));
+const AdminPanel = dynamic(() => import("@/components/AdminPanel"));
+const ProfilePanel = dynamic(() => import("@/components/ProfilePanel"));
 
 type RecruitmentApplicantRow = Awaited<ReturnType<typeof prisma.allianceApplicant.findMany>>[number];
 type RecruitmentMigrationRow = Awaited<ReturnType<typeof prisma.migrationCandidate.findMany>>[number];
@@ -55,16 +57,34 @@ type ProfileViewData = {
 };
 
 export default async function Home(props: { searchParams: Promise<{ name?: string; view?: string }> }) {
+  const shouldLogPerf = process.env.ENABLE_PERF_LOGS === "true";
+  const pageStart = Date.now();
+  const perfMarks: string[] = [];
+  const timed = async <T,>(label: string, task: () => Promise<T>) => {
+    const start = Date.now();
+    const result = await task();
+    if (shouldLogPerf) {
+      perfMarks.push(`${label}:${Date.now() - start}ms`);
+    }
+    return result;
+  };
+
   const searchParams = await props.searchParams;
   const targetName = searchParams.name;
   const requestedView = searchParams.view || "performance";
-  const currentUser = await getCurrentUser();
+  const currentUser = await timed("getCurrentUser", () => getCurrentUser());
 
   if (!currentUser) {
-    const authPlayers = await prisma.player.findMany({
-      orderBy: { name: "asc" },
-      select: { name: true },
-    });
+    const authPlayers = await timed("authPlayers", () =>
+      prisma.player.findMany({
+        orderBy: { name: "asc" },
+        select: { name: true },
+      })
+    );
+
+    if (shouldLogPerf) {
+      console.info(`[PERF] view=auth total=${Date.now() - pageStart}ms ${perfMarks.join(" | ")}`);
+    }
 
     return <AuthPanel players={authPlayers.map((player) => player.name)} />;
   }
@@ -116,13 +136,15 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const [allPlayers, allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
     needsAllPlayers
-      ? prisma.player.findMany({
-          orderBy: { name: "asc" },
-          select: { id: true, name: true },
-        })
+      ? timed("allPlayers", () =>
+          prisma.player.findMany({
+            orderBy: { name: "asc" },
+            select: { id: true, name: true },
+          })
+        )
       : Promise.resolve([]),
     needsAllianceAverage
-      ? getAllianceAverage()
+      ? timed("allianceAverage", () => getAllianceAverage())
       : Promise.resolve({
           techPower: 0,
           heroPower: 0,
@@ -130,47 +152,53 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
           modVehiclePower: 0,
           structurePower: 0,
         }),
-    needsSelectedPlayer ? getSelectedPlayer(targetName) : Promise.resolve(null),
-    needsRosterData ? getRosterData() : Promise.resolve([]),
+    needsSelectedPlayer ? timed("selectedPlayer", () => getSelectedPlayer(targetName)) : Promise.resolve(null),
+    needsRosterData ? timed("rosterData", () => getRosterData()) : Promise.resolve([]),
     needsBugData
-      ? prisma.bug.findMany({
-          orderBy: { createdAt: "desc" },
-        })
+      ? timed("bugData", () =>
+          prisma.bug.findMany({
+            orderBy: { createdAt: "desc" },
+          })
+        )
       : Promise.resolve([]),
     canAccessAdmin
-      ? prisma.role.findMany({
-          orderBy: [{ isSystem: "desc" }, { name: "asc" }],
-          select: { id: true, name: true, isSystem: true, permissions: true },
-        })
+      ? timed("adminRoles", () =>
+          prisma.role.findMany({
+            orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+            select: { id: true, name: true, isSystem: true, permissions: true },
+          })
+        )
       : Promise.resolve([]),
     canAccessAdmin
-      ? prisma.user.findMany({
-          orderBy: { player: { name: "asc" } },
-          select: {
-            id: true,
-            playerId: true,
-            roleId: true,
-            isActive: true,
-            disabledByUser: true,
-            lastLoginAt: true,
-            player: {
-              select: { id: true, name: true },
-            },
-            role: {
-              select: { name: true },
-            },
-            sessions: {
-              where: {
-                expiresAt: {
-                  gt: new Date(),
-                },
+      ? timed("adminUsers", () =>
+          prisma.user.findMany({
+            orderBy: { player: { name: "asc" } },
+            select: {
+              id: true,
+              playerId: true,
+              roleId: true,
+              isActive: true,
+              disabledByUser: true,
+              lastLoginAt: true,
+              player: {
+                select: { id: true, name: true },
               },
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              select: { id: true, createdAt: true },
+              role: {
+                select: { name: true },
+              },
+              sessions: {
+                where: {
+                  expiresAt: {
+                    gt: new Date(),
+                  },
+                },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { id: true, createdAt: true },
+              },
             },
-          },
-        })
+          })
+        )
       : Promise.resolve([]),
   ]);
 
@@ -194,18 +222,22 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     try {
       await ensureAllianceDuelRequirements();
       [duelRequirements, duelScores] = await Promise.all([
-        prisma.allianceDuelRequirement.findMany({
-          orderBy: { dayKey: "asc" },
-        }),
-        prisma.allianceDuelScore.findMany({
-          select: {
-            playerId: true,
-            scoreType: true,
-            dayKey: true,
-            score: true,
-            rank: true,
-          },
-        }),
+        timed("duelRequirements", () =>
+          prisma.allianceDuelRequirement.findMany({
+            orderBy: { dayKey: "asc" },
+          })
+        ),
+        timed("duelScores", () =>
+          prisma.allianceDuelScore.findMany({
+            select: {
+              playerId: true,
+              scoreType: true,
+              dayKey: true,
+              score: true,
+              rank: true,
+            },
+          })
+        ),
       ]);
     } catch (error: unknown) {
       console.error("ALLIANCE DUEL PAGE LOAD ERROR:", error);
@@ -215,27 +247,31 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   if (shouldLoadRecruitmentData) {
     try {
-      const existingScopes = await prisma.recruitmentScoringConfig.findMany({
-        select: { scope: true },
-      });
+      const existingScopes = await timed("recruitmentScopes", () =>
+        prisma.recruitmentScoringConfig.findMany({
+          select: { scope: true },
+        })
+      );
       const existingScopeSet = new Set(existingScopes.map((entry) => entry.scope));
       const missingScopes = (["applicants", "migrations"] as const).filter((scope) => !existingScopeSet.has(scope));
 
       if (missingScopes.length > 0) {
-        await prisma.recruitmentScoringConfig.createMany({
-          data: missingScopes.map((scope) => ({
-            scope,
-            weights: getDefaultWeights(scope),
-          })),
-          skipDuplicates: true,
-        });
+        await timed("recruitmentScopeCreate", () =>
+          prisma.recruitmentScoringConfig.createMany({
+            data: missingScopes.map((scope) => ({
+              scope,
+              weights: getDefaultWeights(scope),
+            })),
+            skipDuplicates: true,
+          })
+        );
       }
 
       const [applicantConfig, migrationConfig, applicants, migrations] = await Promise.all([
-        prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } }),
-        prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } }),
-        prisma.allianceApplicant.findMany({ orderBy: { updatedAt: "desc" } }),
-        prisma.migrationCandidate.findMany({ orderBy: { updatedAt: "desc" } }),
+        timed("applicantConfig", () => prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } })),
+        timed("migrationConfig", () => prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } })),
+        timed("recruitmentApplicants", () => prisma.allianceApplicant.findMany({ orderBy: { updatedAt: "desc" } })),
+        timed("recruitmentMigrations", () => prisma.migrationCandidate.findMany({ orderBy: { updatedAt: "desc" } })),
       ]);
       recruitmentApplicantWeights = normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants"));
       recruitmentMigrationWeights = normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations"));
@@ -324,16 +360,18 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
       const currentDayIndex = new Date().getDay();
       const currentDayKey = ALLIANCE_DUEL_DAYS[Math.max(0, Math.min(ALLIANCE_DUEL_DAYS.length - 1, currentDayIndex - 1))];
       const [dailyRequirement, dailyScore] = await Promise.all([
-        prisma.allianceDuelRequirement.findUnique({ where: { dayKey: currentDayKey } }),
-        prisma.allianceDuelScore.findUnique({
-          where: {
-            playerId_scoreType_dayKey: {
-              playerId: profilePlayer.id,
-              scoreType: "daily",
-              dayKey: currentDayKey,
+        timed("profileDailyRequirement", () => prisma.allianceDuelRequirement.findUnique({ where: { dayKey: currentDayKey } })),
+        timed("profileDailyScore", () =>
+          prisma.allianceDuelScore.findUnique({
+            where: {
+              playerId_scoreType_dayKey: {
+                playerId: profilePlayer.id,
+                scoreType: "daily",
+                dayKey: currentDayKey,
+              },
             },
-          },
-        }),
+          })
+        ),
       ]);
 
       const sortedByScore = [...rosterData].sort((a, b) => b.latestScore - a.latestScore);
@@ -387,6 +425,10 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const effectiveName = selectedPlayerData?.name || currentUser.playerName || "Alliance Member";
   const allPlayerNames = allPlayers.map((player) => player.name);
+
+  if (shouldLogPerf) {
+    console.info(`[PERF] view=${currentView} total=${Date.now() - pageStart}ms ${perfMarks.join(" | ")}`);
+  }
 
   return (
     <div className="page-shell flex-col gap-6">
