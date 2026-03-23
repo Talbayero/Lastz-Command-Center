@@ -41,6 +41,13 @@ dev.db-*
 # temp files
 temp_build_log.txt
 /build
+tmp_*.json
+*.tmp
+*.bak
+BOM/pc-captures/
+*.local.png
+*.local.jpg
+*.local.jpeg
 
 # misc
 .DS_Store

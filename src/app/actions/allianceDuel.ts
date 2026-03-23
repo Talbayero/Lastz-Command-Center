@@ -11,9 +11,22 @@ import {
 } from "@/utils/allianceDuel";
 import { requirePermission } from "@/utils/auth";
 import { invalidateDuelDataCache } from "@/utils/cacheTags";
+import { ensureRecordId, normalizeNonNegativeInt, sanitizePlayerName, sanitizeSingleLineText } from "@/utils/validation";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const HUGGINGFACE_VLM_MODEL = process.env.HUGGINGFACE_VLM_MODEL || "zai-org/GLM-4.5V";
+type AllianceDuelJsonEntry = {
+  name?: unknown;
+  rank?: unknown;
+  score?: unknown;
+};
+type AllianceDuelJsonResponse = {
+  entries?: AllianceDuelJsonEntry[];
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function normalizePlayerName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -35,6 +48,10 @@ function normalizeRank(value: unknown) {
 
 function isValidScoreType(value: string): value is AllianceDuelScoreType {
   return ALLIANCE_DUEL_SCORE_TYPES.includes(value as AllianceDuelScoreType);
+}
+
+function isValidAllianceDuelDay(value: string) {
+  return (ALLIANCE_DUEL_DAYS as readonly string[]).includes(value);
 }
 
 async function parseAllianceDuelImage(input: { imageBase64: string; mimeType: string }) {
@@ -148,10 +165,10 @@ async function parseAllianceDuelImageWithHuggingFace(input: {
 }
 
 function normalizeAllianceDuelEntriesFromJson(rawText: string) {
-  const parsed = parseGeminiJsonResponse(rawText);
+  const parsed = parseGeminiJsonResponse(rawText) as AllianceDuelJsonResponse;
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
 
-  return entries.map((entry: any) => ({
+  return entries.map((entry) => ({
     name: String(entry?.name ?? "").trim(),
     rank: normalizeRank(entry?.rank),
     score: normalizeScore(entry?.score),
@@ -188,16 +205,6 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function dedupeEntries(entries: Array<{ name: string; rank: number | null; score: number }>) {
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = `${normalizePlayerName(entry.name)}::${entry.score}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function parseGeminiJsonResponse(rawText: string) {
   const cleaned = rawText
     .replace(/^```json\s*/i, "")
@@ -216,8 +223,8 @@ function parseGeminiJsonResponse(rawText: string) {
   for (const candidate of candidates) {
     try {
       return JSON.parse(candidate);
-    } catch (error: any) {
-      lastError = error;
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error : new Error("Could not parse Gemini JSON response.");
     }
   }
 
@@ -246,22 +253,22 @@ export async function saveAllianceDuelRequirement(input: {
     await requirePermission("manageAllianceDuel");
     await ensureAllianceDuelRequirements();
 
-    if (!ALLIANCE_DUEL_DAYS.includes(input.dayKey as any)) {
+    if (!isValidAllianceDuelDay(input.dayKey)) {
       return { success: false, error: "Invalid duel day." };
     }
 
     await prisma.allianceDuelRequirement.update({
       where: { dayKey: input.dayKey },
       data: {
-        eventName: input.eventName.trim() || getAllianceDuelDayLabel(input.dayKey),
-        minimumScore: Math.max(0, Math.round(Number(input.minimumScore) || 0)),
+        eventName: sanitizeSingleLineText(input.eventName, 80) || getAllianceDuelDayLabel(input.dayKey),
+        minimumScore: normalizeNonNegativeInt(input.minimumScore),
       },
     });
     invalidateDuelDataCache();
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ALLIANCE DUEL REQUIREMENT ERROR:", error);
-    return { success: false, error: error.message || "Failed to save duel requirement." };
+    return { success: false, error: getErrorMessage(error, "Failed to save duel requirement.") };
   }
 }
 
@@ -278,37 +285,38 @@ export async function saveAllianceDuelManualScore(input: {
     if (!isValidScoreType(input.scoreType)) {
       return { success: false, error: "Invalid duel score type." };
     }
+    const playerId = ensureRecordId(input.playerId, "Player");
 
     const scopeKey = getScoreScopeKey(input.scoreType, input.dayKey);
     const normalizedRank = input.rank ? Math.max(1, Math.round(input.rank)) : null;
 
     await prisma.allianceDuelScore.upsert({
-      where: {
-        playerId_scoreType_dayKey: {
-          playerId: input.playerId,
-          scoreType: input.scoreType,
-          dayKey: scopeKey,
-        },
-      },
-      create: {
-        playerId: input.playerId,
-        scoreType: input.scoreType,
-        dayKey: scopeKey,
-        score: Math.max(0, Math.round(Number(input.score) || 0)),
-        rank: normalizedRank,
-        source: "manual",
-      },
-      update: {
-        score: Math.max(0, Math.round(Number(input.score) || 0)),
-        rank: normalizedRank,
-        source: "manual",
+          where: {
+            playerId_scoreType_dayKey: {
+              playerId,
+              scoreType: input.scoreType,
+              dayKey: scopeKey,
+            },
+          },
+          create: {
+            playerId,
+            scoreType: input.scoreType,
+            dayKey: scopeKey,
+            score: normalizeNonNegativeInt(input.score),
+            rank: normalizedRank,
+            source: "manual",
+          },
+          update: {
+            score: normalizeNonNegativeInt(input.score),
+            rank: normalizedRank,
+            source: "manual",
       },
     });
     invalidateDuelDataCache();
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ALLIANCE DUEL MANUAL SAVE ERROR:", error);
-    return { success: false, error: error.message || "Failed to save duel score." };
+    return { success: false, error: getErrorMessage(error, "Failed to save duel score.") };
   }
 }
 
@@ -336,7 +344,7 @@ export async function saveAllianceDuelParsedEntries(input: {
 
     for (const rawEntry of input.entries) {
       const entry = {
-        name: String(rawEntry.name ?? "").trim(),
+        name: sanitizePlayerName(rawEntry.name),
         score: normalizeScore(rawEntry.score),
         rank: normalizeRank(rawEntry.rank),
       };
@@ -422,9 +430,9 @@ export async function saveAllianceDuelParsedEntries(input: {
         })),
       ],
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ALLIANCE DUEL PARSED SAVE ERROR:", error);
-    return { success: false, error: error.message || "Failed to save parsed duel scores." };
+    return { success: false, error: getErrorMessage(error, "Failed to save parsed duel scores.") };
   }
 }
 
@@ -544,8 +552,8 @@ export async function processAllianceDuelScreenshot(input: {
         })),
       ],
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ALLIANCE DUEL SCREENSHOT ERROR:", error);
-    return { success: false, error: error.message || "Failed to process duel screenshot." };
+    return { success: false, error: getErrorMessage(error, "Failed to process duel screenshot.") };
   }
 }

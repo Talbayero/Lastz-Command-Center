@@ -10,9 +10,12 @@ import {
   type PermissionKey,
   type RolePermissions,
 } from "@/utils/permissions";
+import { sanitizeSingleLineText } from "@/utils/validation";
 
 export const SESSION_COOKIE = "bom_session";
-const SESSION_TTL_DAYS = 30;
+const SESSION_TTL_DAYS = 7;
+const SESSION_ROTATE_AFTER_MS = 24 * 60 * 60 * 1000;
+const SESSION_EXPIRY_REFRESH_WINDOW_MS = 48 * 60 * 60 * 1000;
 export const TEMP_PASSWORD = "123456789";
 const SYSTEM_ROLE_ENSURE_TTL_MS = 10 * 60 * 1000;
 const CURRENT_USER_CACHE_TTL_MS = 15 * 1000;
@@ -33,6 +36,31 @@ type CurrentUser = {
   lastLoginAt: Date | null;
 };
 const currentUserCache = new Map<string, { expiresAt: number; value: CurrentUser | null }>();
+
+type SessionWithUser = {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  createdAt: Date;
+  user: {
+    id: string;
+    playerId: string;
+    isActive: boolean;
+    disabledByUser: boolean;
+    mustChangePassword: boolean;
+    lastLoginAt: Date | null;
+    player: {
+      name: string;
+      alliance: string | null;
+    };
+    roleId: string;
+    role: {
+      name: string;
+      permissions: unknown;
+    };
+  };
+};
 
 const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions; isSystem: boolean }> = [
   {
@@ -188,31 +216,22 @@ function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-async function buildCurrentUser(tokenHash: string): Promise<CurrentUser | null> {
-  const session = await prisma.userSession.findUnique({
-    where: { tokenHash },
-    include: {
-      user: {
-        include: {
-          player: true,
-          role: true,
-        },
-      },
-    },
+async function getSessionCookieStore() {
+  return cookies();
+}
+
+async function setSessionCookie(token: string, expiresAt: Date) {
+  const cookieStore = await getSessionCookieStore();
+  cookieStore.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: expiresAt,
   });
+}
 
-  if (!session) {
-    return null;
-  }
-
-  if (session.expiresAt <= new Date()) {
-    return null;
-  }
-
-  if (!session.user.isActive || session.user.disabledByUser) {
-    return null;
-  }
-
+function toCurrentUser(session: SessionWithUser): CurrentUser {
   return {
     id: session.user.id,
     playerId: session.user.playerId,
@@ -228,6 +247,75 @@ async function buildCurrentUser(tokenHash: string): Promise<CurrentUser | null> 
   };
 }
 
+async function buildCurrentUser(tokenHash: string): Promise<{ currentUser: CurrentUser | null; session: SessionWithUser | null }> {
+  const session = await prisma.userSession.findUnique({
+    where: { tokenHash },
+    include: {
+      user: {
+        include: {
+          player: true,
+          role: true,
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    return { currentUser: null, session: null };
+  }
+
+  if (session.expiresAt <= new Date()) {
+    return { currentUser: null, session: null };
+  }
+
+  if (!session.user.isActive || session.user.disabledByUser) {
+    return { currentUser: null, session: session as SessionWithUser };
+  }
+
+  return { currentUser: toCurrentUser(session as SessionWithUser), session: session as SessionWithUser };
+}
+
+async function maybeRotateSession(session: SessionWithUser) {
+  const now = Date.now();
+  const ageMs = now - session.createdAt.getTime();
+  const msUntilExpiry = session.expiresAt.getTime() - now;
+  const shouldRotate = ageMs >= SESSION_ROTATE_AFTER_MS || msUntilExpiry <= SESSION_EXPIRY_REFRESH_WINDOW_MS;
+
+  if (!shouldRotate) {
+    return false;
+  }
+
+  const nextToken = randomBytes(32).toString("hex");
+  const nextTokenHash = hashSessionToken(nextToken);
+  const nextExpiresAt = new Date(now + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  await prisma.userSession.create({
+    data: {
+      userId: session.userId,
+      tokenHash: nextTokenHash,
+      expiresAt: nextExpiresAt,
+    },
+  });
+
+  try {
+    await setSessionCookie(nextToken, nextExpiresAt);
+  } catch (error) {
+    await prisma.userSession.deleteMany({
+      where: { tokenHash: nextTokenHash },
+    });
+    console.warn("SESSION ROTATION SKIPPED:", error);
+    return false;
+  }
+
+  await prisma.userSession.deleteMany({
+    where: { id: session.id },
+  });
+
+  currentUserCache.delete(session.tokenHash);
+  invalidateAuthDataCache();
+  return true;
+}
+
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -240,14 +328,7 @@ export async function createSession(userId: string) {
     },
   });
 
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires: expiresAt,
-  });
+  await setSessionCookie(token, expiresAt);
   clearCurrentUserCache();
   invalidateAuthDataCache();
 }
@@ -271,7 +352,7 @@ export async function clearSession() {
 export async function getCurrentUser() {
   await ensureSystemRoles();
 
-  const cookieStore = await cookies();
+  const cookieStore = await getSessionCookieStore();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
 
   if (!token) {
@@ -286,7 +367,10 @@ export async function getCurrentUser() {
     return cached.value;
   }
 
-  const currentUser = await buildCurrentUser(tokenHash);
+  const { currentUser, session } = await buildCurrentUser(tokenHash);
+  if (session && currentUser) {
+    await maybeRotateSession(session);
+  }
   currentUserCache.set(tokenHash, {
     expiresAt: now + CURRENT_USER_CACHE_TTL_MS,
     value: currentUser,
@@ -322,8 +406,14 @@ export async function requirePermission(permission: PermissionKey) {
 }
 
 export function validatePassword(password: string) {
-  if (password.length < 8) {
-    return "Password must be at least 8 characters long.";
+  const normalizedPassword = sanitizeSingleLineText(password, 256);
+
+  if (normalizedPassword.length < 10) {
+    return "Password must be at least 10 characters long.";
+  }
+
+  if (!/[A-Z]/.test(normalizedPassword) || !/[a-z]/.test(normalizedPassword) || !/\d/.test(normalizedPassword)) {
+    return "Password must include uppercase, lowercase, and a number.";
   }
 
   return null;

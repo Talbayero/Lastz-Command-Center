@@ -15,6 +15,11 @@ import {
 } from "@/utils/auth";
 import { invalidateAdminDataCache, invalidateAuthDataCache, invalidatePlayerDataCache } from "@/utils/cacheTags";
 import { emptyPermissions, type PermissionKey } from "@/utils/permissions";
+import {
+  ensureRecordId,
+  sanitizePlayerName,
+  sanitizeRoleName,
+} from "@/utils/validation";
 
 type CredentialsInput = {
   playerName: string;
@@ -27,7 +32,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 function normalizePlayerName(name: string) {
-  return name.trim();
+  return sanitizePlayerName(name);
 }
 
 export async function signUpUser(input: CredentialsInput) {
@@ -247,20 +252,31 @@ export async function adminUpdateUser(input: {
 }) {
   try {
     const actingUser = await requirePermission("manageUsers");
+    const userId = ensureRecordId(input.userId, "User");
+    const roleId = ensureRecordId(input.roleId, "Role");
 
-    if (actingUser.id === input.userId) {
+    if (actingUser.id === userId) {
       return {
         success: false,
         error: "Use the account panel to manage your own account. Admin self-edits are protected.",
       };
     }
 
+    const targetRole = await prisma.role.findUnique({
+      where: { id: roleId },
+      select: { id: true },
+    });
+
+    if (!targetRole) {
+      return { success: false, error: "Role not found." };
+    }
+
     await prisma.user.update({
-      where: { id: input.userId },
+      where: { id: userId },
       data: {
-        roleId: input.roleId,
-        isActive: input.isActive,
-        disabledByUser: input.disabledByUser,
+        roleId,
+        isActive: Boolean(input.isActive),
+        disabledByUser: Boolean(input.disabledByUser),
       },
     });
 
@@ -279,9 +295,11 @@ export async function adminCreateUserAccount(input: {
 }) {
   try {
     await requirePermission("manageUsers");
+    const playerId = ensureRecordId(input.playerId, "Player");
+    const roleId = ensureRecordId(input.roleId, "Role");
 
     const existingUser = await prisma.user.findUnique({
-      where: { playerId: input.playerId },
+      where: { playerId },
       select: { id: true },
     });
 
@@ -289,10 +307,29 @@ export async function adminCreateUserAccount(input: {
       return { success: false, error: "That player already has an account." };
     }
 
+    const [player, role] = await Promise.all([
+      prisma.player.findUnique({
+        where: { id: playerId },
+        select: { id: true },
+      }),
+      prisma.role.findUnique({
+        where: { id: roleId },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!player) {
+      return { success: false, error: "Player not found." };
+    }
+
+    if (!role) {
+      return { success: false, error: "Role not found." };
+    }
+
     await prisma.user.create({
       data: {
-        playerId: input.playerId,
-        roleId: input.roleId,
+        playerId,
+        roleId,
         passwordHash: hashPassword(TEMP_PASSWORD),
         mustChangePassword: true,
       },
@@ -309,8 +346,9 @@ export async function adminCreateUserAccount(input: {
 export async function adminResetUserPassword(input: { userId: string }) {
   try {
     const actingUser = await requirePermission("manageUsers");
+    const userId = ensureRecordId(input.userId, "User");
 
-    if (actingUser.id === input.userId) {
+    if (actingUser.id === userId) {
       return {
         success: false,
         error: "Use the account panel to manage your own password. Admin self-resets are protected.",
@@ -319,14 +357,14 @@ export async function adminResetUserPassword(input: { userId: string }) {
 
     await prisma.$transaction([
       prisma.user.update({
-        where: { id: input.userId },
+        where: { id: userId },
         data: {
           passwordHash: hashPassword(TEMP_PASSWORD),
           mustChangePassword: true,
         },
       }),
       prisma.userSession.deleteMany({
-        where: { userId: input.userId },
+        where: { userId },
       }),
     ]);
 
@@ -343,7 +381,7 @@ export async function createRole(input: { name: string; permissions: Partial<Rec
   try {
     await requirePermission("manageRoles");
 
-    const name = input.name.trim();
+    const name = sanitizeRoleName(input.name);
     if (!name) {
       return { success: false, error: "Role name is required." };
     }
@@ -375,13 +413,14 @@ export async function updateRole(input: {
   try {
     await requirePermission("manageRoles");
 
-    const name = input.name.trim();
+    const roleId = ensureRecordId(input.roleId, "Role");
+    const name = sanitizeRoleName(input.name);
     if (!name) {
       return { success: false, error: "Role name is required." };
     }
 
     const role = await prisma.role.findUnique({
-      where: { id: input.roleId },
+      where: { id: roleId },
       select: { permissions: true },
     });
 
@@ -392,7 +431,7 @@ export async function updateRole(input: {
     const permissions = { ...emptyPermissions(), ...(role.permissions as object), ...input.permissions };
 
     await prisma.role.update({
-      where: { id: input.roleId },
+      where: { id: roleId },
       data: {
         name,
         permissions,

@@ -39,7 +39,7 @@ runTest("getCombatPower prefers march total when marches are present", () => {
   assert.equal(result, 100);
 });
 
-runTest("getCombatPower falls back to combatPower when no marches are provided", () => {
+runTest("getCombatPower stays at zero when no marches are provided", () => {
   const result = getCombatPower({
     techPower: 0,
     heroPower: 0,
@@ -54,7 +54,7 @@ runTest("getCombatPower falls back to combatPower when no marches are provided",
     kills: 0,
   });
 
-  assert.equal(result, 123456);
+  assert.equal(result, 0);
 });
 
 runTest("normalizeWeights keeps valid totals and rejects totals over 100%", () => {

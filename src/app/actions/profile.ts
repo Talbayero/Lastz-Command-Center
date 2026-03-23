@@ -3,6 +3,14 @@
 import prisma from "@/utils/db";
 import { hasPermission, requireCurrentUser } from "@/utils/auth";
 import { invalidateDuelDataCache, invalidatePlayerDataCache } from "@/utils/cacheTags";
+import {
+  ALLOWED_GLORY_WAR_STATUSES,
+  ensureAllowedValue,
+  ensureRecordId,
+  normalizeNonNegativeInt,
+  sanitizeMultiLineText,
+  sanitizePlayerName,
+} from "@/utils/validation";
 
 const SCORE_WEIGHTS = { kills: 0.30, tech: 0.25, hero: 0.20, troop: 0.15, structure: 0.05, modVehicle: 0.05 };
 
@@ -27,21 +35,18 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function normalizeInt(value: unknown) {
-  return Math.max(0, Math.round(Number(value) || 0));
-}
-
 export async function saveProfileData(input: ProfileInput) {
   try {
     const currentUser = await requireCurrentUser();
+    const playerId = ensureRecordId(input.playerId, "Player");
     const canManageOthers = hasPermission(currentUser, "editRoster") || hasPermission(currentUser, "manageUsers");
-    const isSelf = currentUser.playerId === input.playerId;
+    const isSelf = currentUser.playerId === playerId;
 
     if (!isSelf && !canManageOthers) {
       return { success: false, error: "You do not have permission to update that profile." };
     }
 
-    const name = input.name.trim();
+    const name = sanitizePlayerName(input.name);
     if (!name) {
       return { success: false, error: "Player name is required." };
     }
@@ -49,7 +54,7 @@ export async function saveProfileData(input: ProfileInput) {
     const existingConflict = await prisma.player.findFirst({
       where: {
         name: { equals: name, mode: "insensitive" },
-        NOT: { id: input.playerId },
+        NOT: { id: playerId },
       },
       select: { id: true },
     });
@@ -58,19 +63,20 @@ export async function saveProfileData(input: ProfileInput) {
       return { success: false, error: `Player name "${name}" is already in use.` };
     }
 
-    const kills = normalizeInt(input.kills);
-    const techPower = normalizeInt(input.techPower);
-    const heroPower = normalizeInt(input.heroPower);
-    const troopPower = normalizeInt(input.troopPower);
-    const modVehiclePower = normalizeInt(input.modVehiclePower);
-    const structurePower = normalizeInt(input.structurePower);
+    const kills = normalizeNonNegativeInt(input.kills);
+    const techPower = normalizeNonNegativeInt(input.techPower);
+    const heroPower = normalizeNonNegativeInt(input.heroPower);
+    const troopPower = normalizeNonNegativeInt(input.troopPower);
+    const modVehiclePower = normalizeNonNegativeInt(input.modVehiclePower);
+    const structurePower = normalizeNonNegativeInt(input.structurePower);
     const totalPower =
-      normalizeInt(input.totalPower) ||
+      normalizeNonNegativeInt(input.totalPower) ||
       techPower + heroPower + troopPower + modVehiclePower + structurePower;
-    const march1Power = normalizeInt(input.march1Power);
-    const march2Power = normalizeInt(input.march2Power);
-    const march3Power = normalizeInt(input.march3Power);
-    const march4Power = normalizeInt(input.march4Power);
+    const march1Power = normalizeNonNegativeInt(input.march1Power);
+    const march2Power = normalizeNonNegativeInt(input.march2Power);
+    const march3Power = normalizeNonNegativeInt(input.march3Power);
+    const march4Power = normalizeNonNegativeInt(input.march4Power);
+    const gloryWarStatus = ensureAllowedValue(input.gloryWarStatus, ALLOWED_GLORY_WAR_STATUSES, "Offline");
     const latestScore =
       kills * SCORE_WEIGHTS.kills +
       techPower * SCORE_WEIGHTS.tech +
@@ -81,10 +87,10 @@ export async function saveProfileData(input: ProfileInput) {
 
     await prisma.$transaction([
       prisma.player.update({
-        where: { id: input.playerId },
+        where: { id: playerId },
         data: {
           name,
-          gloryWarStatus: input.gloryWarStatus || "Offline",
+          gloryWarStatus,
           totalPower,
           kills,
           march1Power,
@@ -96,7 +102,7 @@ export async function saveProfileData(input: ProfileInput) {
       }),
       prisma.snapshot.create({
         data: {
-          playerId: input.playerId,
+          playerId,
           kills,
           totalPower,
           structurePower,
@@ -127,8 +133,8 @@ export async function saveProfileLeaderNotes(input: { playerId: string; leaderNo
     }
 
     await prisma.player.update({
-      where: { id: input.playerId },
-      data: { leaderNotes: input.leaderNotes.trim() },
+      where: { id: ensureRecordId(input.playerId, "Player") },
+      data: { leaderNotes: sanitizeMultiLineText(input.leaderNotes, 2000) },
     });
     invalidatePlayerDataCache();
     return { success: true };

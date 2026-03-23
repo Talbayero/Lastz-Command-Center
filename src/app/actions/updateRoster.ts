@@ -3,6 +3,13 @@
 import prisma from "@/utils/db";
 import { requirePermission } from "@/utils/auth";
 import { invalidatePlayerDataCache } from "@/utils/cacheTags";
+import {
+  ALLOWED_GLORY_WAR_STATUSES,
+  ensureAllowedValue,
+  ensureRecordId,
+  normalizeNonNegativeInt,
+  sanitizePlayerName,
+} from "@/utils/validation";
 
 type RosterUpdateInput = {
   id: string;
@@ -26,17 +33,18 @@ export async function updateRoster(players: RosterUpdateInput[]) {
     await requirePermission("editRoster");
     const SCORE_WEIGHTS = { kills: 0.30, tech: 0.25, hero: 0.20, troop: 0.15, structure: 0.05, modVehicle: 0.05 };
     const preparedPlayers = players.map((p) => {
-      const name = String(p.name ?? "").trim();
-      const kills = Number(p.kills) || 0;
-      const tech = Number(p.techPower) || 0;
-      const hero = Number(p.heroPower) || 0;
-      const troop = Number(p.troopPower) || 0;
-      const structure = Number(p.structurePower) || 0;
-      const modVehicle = Number(p.modVehiclePower) || 0;
-      const march1Power = Number(p.march1Power) || 0;
-      const march2Power = Number(p.march2Power) || 0;
-      const march3Power = Number(p.march3Power) || 0;
-      const march4Power = Number(p.march4Power) || 0;
+      const id = ensureRecordId(p.id, "Player");
+      const name = sanitizePlayerName(p.name);
+      const kills = normalizeNonNegativeInt(p.kills);
+      const tech = normalizeNonNegativeInt(p.techPower);
+      const hero = normalizeNonNegativeInt(p.heroPower);
+      const troop = normalizeNonNegativeInt(p.troopPower);
+      const structure = normalizeNonNegativeInt(p.structurePower);
+      const modVehicle = normalizeNonNegativeInt(p.modVehiclePower);
+      const march1Power = normalizeNonNegativeInt(p.march1Power);
+      const march2Power = normalizeNonNegativeInt(p.march2Power);
+      const march3Power = normalizeNonNegativeInt(p.march3Power);
+      const march4Power = normalizeNonNegativeInt(p.march4Power);
       const rawScore =
         (kills * SCORE_WEIGHTS.kills) +
         (tech * SCORE_WEIGHTS.tech) +
@@ -44,14 +52,14 @@ export async function updateRoster(players: RosterUpdateInput[]) {
         (troop * SCORE_WEIGHTS.troop) +
         (structure * SCORE_WEIGHTS.structure) +
         (modVehicle * SCORE_WEIGHTS.modVehicle);
-      const totalPower = Number(p.totalPower) || (tech + hero + troop + structure + modVehicle);
+      const totalPower = normalizeNonNegativeInt(p.totalPower) || (tech + hero + troop + structure + modVehicle);
 
       if (!name) {
         throw new Error("Player name cannot be empty.");
       }
 
       return {
-        id: p.id,
+        id,
         name,
         kills,
         tech,
@@ -65,7 +73,7 @@ export async function updateRoster(players: RosterUpdateInput[]) {
         march4Power,
         rawScore,
         totalPower,
-        gloryWarStatus: p.gloryWarStatus || "Offline",
+        gloryWarStatus: ensureAllowedValue(p.gloryWarStatus || "Offline", ALLOWED_GLORY_WAR_STATUSES, "Offline"),
       };
     });
 
@@ -145,13 +153,14 @@ export async function updateRoster(players: RosterUpdateInput[]) {
 export async function deleteRosterPlayer(playerId: string) {
   try {
     await requirePermission("deleteRosterMembers");
+    const normalizedPlayerId = ensureRecordId(playerId, "Player");
 
     await prisma.$transaction([
       prisma.snapshot.deleteMany({
-        where: { playerId },
+        where: { playerId: normalizedPlayerId },
       }),
       prisma.player.delete({
-        where: { id: playerId },
+        where: { id: normalizedPlayerId },
       }),
     ]);
 

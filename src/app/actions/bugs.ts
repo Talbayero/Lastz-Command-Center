@@ -3,6 +3,14 @@
 import prisma from "@/utils/db";
 import { requirePermission } from "@/utils/auth";
 import { invalidateBugDataCache } from "@/utils/cacheTags";
+import {
+  BUG_PRIORITIES,
+  BUG_STATUSES,
+  ensureAllowedValue,
+  ensureRecordId,
+  sanitizeMultiLineText,
+  sanitizeSingleLineText,
+} from "@/utils/validation";
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -12,15 +20,16 @@ export async function submitBug(formData: { reporter?: string, description: stri
   try {
     await requirePermission("manageBugs");
 
-    if (!formData.description) {
+    const description = sanitizeMultiLineText(formData.description, 2000);
+    if (!description) {
       return { success: false, error: "Description is required" };
     }
 
     await prisma.bug.create({
       data: {
-        reporter: formData.reporter || "Anonymous",
-        description: formData.description,
-        priority: formData.priority || "Medium",
+        reporter: sanitizeSingleLineText(formData.reporter || "Anonymous", 80) || "Anonymous",
+        description,
+        priority: ensureAllowedValue(formData.priority || "Medium", BUG_PRIORITIES, "Medium"),
         status: "Open",
       },
     });
@@ -38,8 +47,8 @@ export async function updateBugStatus(id: string, status: string) {
     await requirePermission("manageBugs");
 
     await prisma.bug.update({
-      where: { id },
-      data: { status },
+      where: { id: ensureRecordId(id, "Bug") },
+      data: { status: ensureAllowedValue(status, BUG_STATUSES, "Open") },
     });
     invalidateBugDataCache();
     return { success: true };

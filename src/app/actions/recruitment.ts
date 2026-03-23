@@ -9,11 +9,19 @@ import {
   normalizeWeights,
   type RecruitmentScope,
 } from "@/utils/recruitmentScoring";
-
-const applicantStatuses = ["New", "Reviewing", "Interview", "Approved", "Rejected"] as const;
-const migrationStatuses = ["Scouted", "Contacted", "Negotiating", "Ready", "Rejected"] as const;
-const migrationContactStatuses = ["Not Contacted", "Contacted", "In Discussion", "Follow Up", "Closed"] as const;
-const recruitmentCategories = ["Elite", "Advanced", "Medium", "Regular"] as const;
+import {
+  APPLICANT_STATUSES,
+  MIGRATION_CONTACT_STATUSES,
+  MIGRATION_STATUSES,
+  RECRUITMENT_CATEGORIES,
+  TIMEZONE_OPTIONS,
+  ensureAllowedValue,
+  ensureRecordId,
+  normalizeNonNegativeInt,
+  sanitizeIdentifier,
+  sanitizeMultiLineText,
+  sanitizePlayerName,
+} from "@/utils/validation";
 
 export type RecruitmentStatInput = {
   name: string;
@@ -51,15 +59,11 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function normalizeInt(value: unknown) {
-  return Math.max(0, Math.round(Number(value) || 0));
-}
-
 function getCombatData(input: RecruitmentStatInput) {
-  const march1Power = normalizeInt(input.march1Power);
-  const march2Power = normalizeInt(input.march2Power);
-  const march3Power = normalizeInt(input.march3Power);
-  const march4Power = normalizeInt(input.march4Power);
+  const march1Power = normalizeNonNegativeInt(input.march1Power);
+  const march2Power = normalizeNonNegativeInt(input.march2Power);
+  const march3Power = normalizeNonNegativeInt(input.march3Power);
+  const march4Power = normalizeNonNegativeInt(input.march4Power);
   const marchTotal = march1Power + march2Power + march3Power + march4Power;
 
   return {
@@ -128,34 +132,33 @@ export async function saveApplicant(input: ApplicantInput) {
   try {
     await requirePermission("manageRecruitment");
 
-    const name = input.name.trim();
+    const name = sanitizePlayerName(input.name);
     if (!name) {
       return { success: false, error: "Player name is required." };
     }
 
-    if (!applicantStatuses.includes(input.status as (typeof applicantStatuses)[number])) {
-      return { success: false, error: "Invalid applicant status." };
-    }
+    const status = ensureAllowedValue(input.status, APPLICANT_STATUSES);
+    const timezone = ensureAllowedValue(input.timezone || "UTC-6", TIMEZONE_OPTIONS, "UTC-6");
 
     const data = {
       name,
-      timezone: input.timezone.trim(),
+      timezone,
       category: "",
-      status: input.status,
-      notes: input.notes.trim(),
-      techPower: normalizeInt(input.techPower),
-      heroPower: normalizeInt(input.heroPower),
-      troopPower: normalizeInt(input.troopPower),
-      modVehiclePower: normalizeInt(input.modVehiclePower),
-      structurePower: normalizeInt(input.structurePower),
+      status,
+      notes: sanitizeMultiLineText(input.notes, 2000),
+      techPower: normalizeNonNegativeInt(input.techPower),
+      heroPower: normalizeNonNegativeInt(input.heroPower),
+      troopPower: normalizeNonNegativeInt(input.troopPower),
+      modVehiclePower: normalizeNonNegativeInt(input.modVehiclePower),
+      structurePower: normalizeNonNegativeInt(input.structurePower),
       ...getCombatData(input),
-      kills: normalizeInt(input.kills),
+      kills: normalizeNonNegativeInt(input.kills),
       manualAdjustment: 0,
     };
 
     const record = input.id
       ? await prisma.allianceApplicant.update({
-          where: { id: input.id },
+          where: { id: ensureRecordId(input.id, "Applicant") },
           data,
         })
       : await prisma.allianceApplicant.create({ data });
@@ -172,51 +175,45 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
   try {
     await requirePermission("manageRecruitment");
 
-    const name = input.name.trim();
+    const name = sanitizePlayerName(input.name);
     if (!name) {
       return { success: false, error: "Player name is required." };
     }
 
-    if (!migrationStatuses.includes(input.status as (typeof migrationStatuses)[number])) {
-      return { success: false, error: "Invalid migration status." };
-    }
-
-    if (!migrationContactStatuses.includes(input.contactStatus as (typeof migrationContactStatuses)[number])) {
-      return { success: false, error: "Invalid contact status." };
-    }
-
-    if (input.category && !recruitmentCategories.includes(input.category as (typeof recruitmentCategories)[number])) {
-      return { success: false, error: "Invalid migration category." };
-    }
+    const status = ensureAllowedValue(input.status, MIGRATION_STATUSES);
+    const contactStatus = ensureAllowedValue(input.contactStatus, MIGRATION_CONTACT_STATUSES);
+    const requestedCategory = input.category
+      ? ensureAllowedValue(input.category, RECRUITMENT_CATEGORIES)
+      : "";
 
     const normalizedStats = {
-      techPower: normalizeInt(input.techPower),
-      heroPower: normalizeInt(input.heroPower),
-      troopPower: normalizeInt(input.troopPower),
-      modVehiclePower: normalizeInt(input.modVehiclePower),
-      structurePower: normalizeInt(input.structurePower),
+      techPower: normalizeNonNegativeInt(input.techPower),
+      heroPower: normalizeNonNegativeInt(input.heroPower),
+      troopPower: normalizeNonNegativeInt(input.troopPower),
+      modVehiclePower: normalizeNonNegativeInt(input.modVehiclePower),
+      structurePower: normalizeNonNegativeInt(input.structurePower),
       ...getCombatData(input),
-      kills: normalizeInt(input.kills),
+      kills: normalizeNonNegativeInt(input.kills),
     };
     const migrationWeights = await getScoringWeights("migrations");
     const fallbackCategory = getCategoryFromScore(computeRecruitmentScore(normalizedStats, migrationWeights));
 
     const data = {
       name,
-      originalServer: input.originalServer.trim(),
-      originalAlliance: input.originalAlliance.trim(),
-      reasonForLeaving: input.reasonForLeaving.trim(),
-      contactStatus: input.contactStatus,
-      category: input.category || fallbackCategory,
-      status: input.status,
-      notes: input.notes.trim(),
+      originalServer: sanitizeIdentifier(input.originalServer),
+      originalAlliance: sanitizeIdentifier(input.originalAlliance),
+      reasonForLeaving: sanitizeMultiLineText(input.reasonForLeaving, 500),
+      contactStatus,
+      category: requestedCategory || fallbackCategory,
+      status,
+      notes: sanitizeMultiLineText(input.notes, 2000),
       ...normalizedStats,
       manualAdjustment: 0,
     };
 
     const record = input.id
       ? await prisma.migrationCandidate.update({
-          where: { id: input.id },
+          where: { id: ensureRecordId(input.id, "Migration candidate") },
           data,
         })
       : await prisma.migrationCandidate.create({ data });
@@ -232,7 +229,7 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
 export async function deleteApplicant(input: { id: string }) {
   try {
     await requirePermission("manageRecruitment");
-    await prisma.allianceApplicant.delete({ where: { id: input.id } });
+    await prisma.allianceApplicant.delete({ where: { id: ensureRecordId(input.id, "Applicant") } });
     invalidateRecruitmentDataCache();
     return { success: true };
   } catch (error: unknown) {
@@ -244,7 +241,7 @@ export async function deleteApplicant(input: { id: string }) {
 export async function deleteMigrationCandidate(input: { id: string }) {
   try {
     await requirePermission("manageRecruitment");
-    await prisma.migrationCandidate.delete({ where: { id: input.id } });
+    await prisma.migrationCandidate.delete({ where: { id: ensureRecordId(input.id, "Migration candidate") } });
     invalidateRecruitmentDataCache();
     return { success: true };
   } catch (error: unknown) {
