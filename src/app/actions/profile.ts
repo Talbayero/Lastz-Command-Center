@@ -2,6 +2,7 @@
 
 import prisma from "@/utils/db";
 import { hasPermission, requireCurrentUser } from "@/utils/auth";
+import { invalidateDuelDataCache, invalidatePlayerDataCache } from "@/utils/cacheTags";
 
 const SCORE_WEIGHTS = { kills: 0.30, tech: 0.25, hero: 0.20, troop: 0.15, structure: 0.05, modVehicle: 0.05 };
 
@@ -107,6 +108,8 @@ export async function saveProfileData(input: ProfileInput) {
         },
       }),
     ]);
+    invalidatePlayerDataCache();
+    invalidateDuelDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("PROFILE SAVE ERROR:", error);
@@ -127,6 +130,7 @@ export async function saveProfileLeaderNotes(input: { playerId: string; leaderNo
       where: { id: input.playerId },
       data: { leaderNotes: input.leaderNotes.trim() },
     });
+    invalidatePlayerDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("PROFILE NOTES ERROR:", error);

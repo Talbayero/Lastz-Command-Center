@@ -2,12 +2,25 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import Leaderboard from "@/components/Leaderboard";
 import AllianceOverview from "@/components/AllianceOverview";
-import prisma from "@/utils/db";
 import { getCurrentUser, hasPermission } from "@/utils/auth";
 import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
 import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 import { getDefaultWeights, normalizeWeights } from "@/utils/recruitmentScoring";
+import {
+  getAdminRolesCached,
+  getAdminUsersCached,
+  getAllPlayersCached,
+  getBugDataCached,
+  getDuelRequirementsCached,
+  getDuelScoresCached,
+  getPlayerNamesCached,
+  getProfileDailyDuelDataCached,
+  getProfilePlayerCached,
+  getRecruitmentApplicantsCached,
+  getRecruitmentConfigsCached,
+  getRecruitmentMigrationsCached,
+} from "@/utils/cachedQueries";
 
 const AuthPanel = dynamic(() => import("@/components/AuthPanel"));
 const OcrUploader = dynamic(() => import("@/components/OcrUploader"));
@@ -20,8 +33,8 @@ const RecruitmentPanel = dynamic(() => import("@/components/RecruitmentPanel"));
 const AdminPanel = dynamic(() => import("@/components/AdminPanel"));
 const ProfilePanel = dynamic(() => import("@/components/ProfilePanel"));
 
-type RecruitmentApplicantRow = Awaited<ReturnType<typeof prisma.allianceApplicant.findMany>>[number];
-type RecruitmentMigrationRow = Awaited<ReturnType<typeof prisma.migrationCandidate.findMany>>[number];
+type RecruitmentApplicantRow = Awaited<ReturnType<typeof getRecruitmentApplicantsCached>>[number];
+type RecruitmentMigrationRow = Awaited<ReturnType<typeof getRecruitmentMigrationsCached>>[number];
 type ProfileViewData = {
   id: string;
   name: string;
@@ -75,18 +88,13 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const currentUser = await timed("getCurrentUser", () => getCurrentUser());
 
   if (!currentUser) {
-    const authPlayers = await timed("authPlayers", () =>
-      prisma.player.findMany({
-        orderBy: { name: "asc" },
-        select: { name: true },
-      })
-    );
+    const authPlayers = await timed("authPlayers", () => getPlayerNamesCached());
 
     if (shouldLogPerf) {
       console.info(`[PERF] view=auth total=${Date.now() - pageStart}ms ${perfMarks.join(" | ")}`);
     }
 
-    return <AuthPanel players={authPlayers.map((player) => player.name)} />;
+    return <AuthPanel players={authPlayers} />;
   }
 
   const canViewOverview = hasPermission(currentUser, "viewAllianceOverview");
@@ -136,12 +144,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   const [allPlayers, allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
     needsAllPlayers
-      ? timed("allPlayers", () =>
-          prisma.player.findMany({
-            orderBy: { name: "asc" },
-            select: { id: true, name: true },
-          })
-        )
+      ? timed("allPlayers", () => getAllPlayersCached())
       : Promise.resolve([]),
     needsAllianceAverage
       ? timed("allianceAverage", () => getAllianceAverage())
@@ -155,50 +158,13 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     needsSelectedPlayer ? timed("selectedPlayer", () => getSelectedPlayer(targetName)) : Promise.resolve(null),
     needsRosterData ? timed("rosterData", () => getRosterData()) : Promise.resolve([]),
     needsBugData
-      ? timed("bugData", () =>
-          prisma.bug.findMany({
-            orderBy: { createdAt: "desc" },
-          })
-        )
+      ? timed("bugData", () => getBugDataCached())
       : Promise.resolve([]),
     canAccessAdmin
-      ? timed("adminRoles", () =>
-          prisma.role.findMany({
-            orderBy: [{ isSystem: "desc" }, { name: "asc" }],
-            select: { id: true, name: true, isSystem: true, permissions: true },
-          })
-        )
+      ? timed("adminRoles", () => getAdminRolesCached())
       : Promise.resolve([]),
     canAccessAdmin
-      ? timed("adminUsers", () =>
-          prisma.user.findMany({
-            orderBy: { player: { name: "asc" } },
-            select: {
-              id: true,
-              playerId: true,
-              roleId: true,
-              isActive: true,
-              disabledByUser: true,
-              lastLoginAt: true,
-              player: {
-                select: { id: true, name: true },
-              },
-              role: {
-                select: { name: true },
-              },
-              sessions: {
-                where: {
-                  expiresAt: {
-                    gt: new Date(),
-                  },
-                },
-                orderBy: { createdAt: "desc" },
-                take: 1,
-                select: { id: true, createdAt: true },
-              },
-            },
-          })
-        )
+      ? timed("adminUsers", () => getAdminUsersCached())
       : Promise.resolve([]),
   ]);
 
@@ -222,22 +188,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     try {
       await ensureAllianceDuelRequirements();
       [duelRequirements, duelScores] = await Promise.all([
-        timed("duelRequirements", () =>
-          prisma.allianceDuelRequirement.findMany({
-            orderBy: { dayKey: "asc" },
-          })
-        ),
-        timed("duelScores", () =>
-          prisma.allianceDuelScore.findMany({
-            select: {
-              playerId: true,
-              scoreType: true,
-              dayKey: true,
-              score: true,
-              rank: true,
-            },
-          })
-        ),
+        timed("duelRequirements", () => getDuelRequirementsCached()),
+        timed("duelScores", () => getDuelScoresCached()),
       ]);
     } catch (error: unknown) {
       console.error("ALLIANCE DUEL PAGE LOAD ERROR:", error);
@@ -247,34 +199,13 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   if (shouldLoadRecruitmentData) {
     try {
-      const existingScopes = await timed("recruitmentScopes", () =>
-        prisma.recruitmentScoringConfig.findMany({
-          select: { scope: true },
-        })
-      );
-      const existingScopeSet = new Set(existingScopes.map((entry) => entry.scope));
-      const missingScopes = (["applicants", "migrations"] as const).filter((scope) => !existingScopeSet.has(scope));
-
-      if (missingScopes.length > 0) {
-        await timed("recruitmentScopeCreate", () =>
-          prisma.recruitmentScoringConfig.createMany({
-            data: missingScopes.map((scope) => ({
-              scope,
-              weights: getDefaultWeights(scope),
-            })),
-            skipDuplicates: true,
-          })
-        );
-      }
-
-      const [applicantConfig, migrationConfig, applicants, migrations] = await Promise.all([
-        timed("applicantConfig", () => prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } })),
-        timed("migrationConfig", () => prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } })),
-        timed("recruitmentApplicants", () => prisma.allianceApplicant.findMany({ orderBy: { updatedAt: "desc" } })),
-        timed("recruitmentMigrations", () => prisma.migrationCandidate.findMany({ orderBy: { updatedAt: "desc" } })),
+      const [{ applicants: applicantWeights, migrations: migrationWeights }, applicants, migrations] = await Promise.all([
+        timed("recruitmentConfig", () => getRecruitmentConfigsCached()),
+        timed("recruitmentApplicants", () => getRecruitmentApplicantsCached()),
+        timed("recruitmentMigrations", () => getRecruitmentMigrationsCached()),
       ]);
-      recruitmentApplicantWeights = normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants"));
-      recruitmentMigrationWeights = normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations"));
+      recruitmentApplicantWeights = normalizeWeights(applicantWeights, getDefaultWeights("applicants"));
+      recruitmentMigrationWeights = normalizeWeights(migrationWeights, getDefaultWeights("migrations"));
       recruitmentApplicants = applicants;
       recruitmentMigrations = migrations;
     } catch (error: unknown) {
@@ -286,93 +217,14 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   if (currentView === "profile") {
     await ensureAllianceDuelRequirements();
     const resolvedTargetName = canBrowseProfiles ? profileTargetName : currentUser.playerName;
-    const profilePlayer =
-      (resolvedTargetName
-        ? await prisma.player.findFirst({
-            where: { name: { equals: resolvedTargetName, mode: "insensitive" } },
-            select: {
-              id: true,
-              name: true,
-              totalPower: true,
-              kills: true,
-              latestScore: true,
-              gloryWarStatus: true,
-              march1Power: true,
-              march2Power: true,
-              march3Power: true,
-              march4Power: true,
-              updatedAt: true,
-              leaderNotes: true,
-              snapshots: {
-                orderBy: { createdAt: "desc" },
-                take: 3,
-                select: {
-                  id: true,
-                  createdAt: true,
-                  totalPower: true,
-                  kills: true,
-                  score: true,
-                  structurePower: true,
-                  techPower: true,
-                  troopPower: true,
-                  heroPower: true,
-                  modVehiclePower: true,
-                },
-              },
-            },
-          })
-        : null) ??
-      (await prisma.player.findUnique({
-        where: { id: currentUser.playerId },
-        select: {
-          id: true,
-          name: true,
-          totalPower: true,
-          kills: true,
-          latestScore: true,
-          gloryWarStatus: true,
-          march1Power: true,
-          march2Power: true,
-          march3Power: true,
-          march4Power: true,
-          updatedAt: true,
-          leaderNotes: true,
-          snapshots: {
-            orderBy: { createdAt: "desc" },
-            take: 3,
-            select: {
-              id: true,
-              createdAt: true,
-              totalPower: true,
-              kills: true,
-              score: true,
-              structurePower: true,
-              techPower: true,
-              troopPower: true,
-              heroPower: true,
-              modVehiclePower: true,
-            },
-          },
-        },
-      }));
+    const profilePlayer = await timed("profilePlayer", () =>
+      getProfilePlayerCached(resolvedTargetName, currentUser.playerId)
+    );
 
     if (profilePlayer) {
-      const currentDayIndex = new Date().getDay();
-      const currentDayKey = ALLIANCE_DUEL_DAYS[Math.max(0, Math.min(ALLIANCE_DUEL_DAYS.length - 1, currentDayIndex - 1))];
-      const [dailyRequirement, dailyScore] = await Promise.all([
-        timed("profileDailyRequirement", () => prisma.allianceDuelRequirement.findUnique({ where: { dayKey: currentDayKey } })),
-        timed("profileDailyScore", () =>
-          prisma.allianceDuelScore.findUnique({
-            where: {
-              playerId_scoreType_dayKey: {
-                playerId: profilePlayer.id,
-                scoreType: "daily",
-                dayKey: currentDayKey,
-              },
-            },
-          })
-        ),
-      ]);
+      const { currentDayKey, dailyRequirement, dailyScore } = await timed("profileDailyDuel", () =>
+        getProfileDailyDuelDataCached(profilePlayer.id)
+      );
 
       const sortedByScore = [...rosterData].sort((a, b) => b.latestScore - a.latestScore);
       const rank = sortedByScore.findIndex((player) => player.id === profilePlayer.id) + 1;
@@ -382,7 +234,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         profilePlayer.march2Power +
         profilePlayer.march3Power +
         profilePlayer.march4Power;
-      const duelRequirement = dailyRequirement?.minimumScore ?? 0;
+      const duelRequirement = dailyRequirement.minimumScore ?? 0;
       const duelScore = dailyScore?.score ?? null;
       const duelCompliance =
         duelScore === null ? "Missing Data" : duelScore >= duelRequirement ? "Met" : "Below Requirement";
@@ -409,7 +261,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         todayDuelScore: duelScore,
         todayDuelRank: dailyScore?.rank ?? null,
         duelRequirement,
-        duelRequirementName: dailyRequirement?.eventName ?? getAllianceDuelDayLabel(currentDayKey),
+        duelRequirementName: dailyRequirement.eventName ?? getAllianceDuelDayLabel(currentDayKey),
         duelCompliance,
         leaderNotes: profilePlayer.leaderNotes,
         snapshots: profilePlayer.snapshots.map((snapshot) => ({

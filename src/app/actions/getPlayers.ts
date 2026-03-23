@@ -1,14 +1,10 @@
 "use server";
 
-import prisma from "@/utils/db";
+import { getPlayerNamesCached } from "@/utils/cachedQueries";
 
 export async function getPlayers() {
   try {
-    const players = await prisma.player.findMany({
-      orderBy: { name: "asc" },
-      select: { name: true },
-    });
-    return players.map((p) => p.name);
+    return await getPlayerNamesCached();
   } catch (error) {
     console.error("Failed to fetch players:", error);
     return [];

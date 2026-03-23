@@ -1,8 +1,8 @@
 "use server";
 
 import prisma from "@/utils/db";
-import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/utils/auth";
+import { invalidateBugDataCache } from "@/utils/cacheTags";
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -25,7 +25,7 @@ export async function submitBug(formData: { reporter?: string, description: stri
       },
     });
 
-    revalidatePath("/");
+    invalidateBugDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("BUG SUBMISSION ERROR:", error);
@@ -41,7 +41,7 @@ export async function updateBugStatus(id: string, status: string) {
       where: { id },
       data: { status },
     });
-    revalidatePath("/");
+    invalidateBugDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("BUG UPDATE ERROR:", error);

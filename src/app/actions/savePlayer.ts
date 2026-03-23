@@ -2,6 +2,7 @@
 
 import prisma from "@/utils/db";
 import { hasPermission, requirePermission } from "@/utils/auth";
+import { invalidatePlayerDataCache } from "@/utils/cacheTags";
 
 type SavePlayerInput = {
   name: string;
@@ -132,6 +133,7 @@ export async function savePlayerData(data: SavePlayerInput) {
         },
       });
     });
+    invalidatePlayerDataCache();
     return { success: true };
 
   } catch (error: unknown) {

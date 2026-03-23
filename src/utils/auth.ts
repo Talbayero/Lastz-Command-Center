@@ -3,6 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import prisma from "@/utils/db";
+import { invalidateAuthDataCache } from "@/utils/cacheTags";
 import {
   normalizePermissions,
   permissionKeys,
@@ -14,9 +15,24 @@ export const SESSION_COOKIE = "bom_session";
 const SESSION_TTL_DAYS = 30;
 export const TEMP_PASSWORD = "123456789";
 const SYSTEM_ROLE_ENSURE_TTL_MS = 10 * 60 * 1000;
+const CURRENT_USER_CACHE_TTL_MS = 15 * 1000;
 
 let lastSystemRoleEnsureAt = 0;
 let systemRoleEnsurePromise: Promise<void> | null = null;
+type CurrentUser = {
+  id: string;
+  playerId: string;
+  playerName: string;
+  alliance: string;
+  roleId: string;
+  roleName: string;
+  permissions: RolePermissions;
+  isActive: boolean;
+  disabledByUser: boolean;
+  mustChangePassword: boolean;
+  lastLoginAt: Date | null;
+};
+const currentUserCache = new Map<string, { expiresAt: number; value: CurrentUser | null }>();
 
 const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions; isSystem: boolean }> = [
   {
@@ -172,53 +188,9 @@ function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function createSession(userId: string) {
-  const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
-
-  await prisma.userSession.create({
-    data: {
-      userId,
-      tokenHash: hashSessionToken(token),
-      expiresAt,
-    },
-  });
-
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires: expiresAt,
-  });
-}
-
-export async function clearSession() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-
-  if (token) {
-    await prisma.userSession.deleteMany({
-      where: { tokenHash: hashSessionToken(token) },
-    });
-  }
-
-  cookieStore.delete(SESSION_COOKIE);
-}
-
-export async function getCurrentUser() {
-  await ensureSystemRoles();
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-
-  if (!token) {
-    return null;
-  }
-
+async function buildCurrentUser(tokenHash: string): Promise<CurrentUser | null> {
   const session = await prisma.userSession.findUnique({
-    where: { tokenHash: hashSessionToken(token) },
+    where: { tokenHash },
     include: {
       user: {
         include: {
@@ -256,6 +228,73 @@ export async function getCurrentUser() {
   };
 }
 
+export async function createSession(userId: string) {
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  await prisma.userSession.create({
+    data: {
+      userId,
+      tokenHash: hashSessionToken(token),
+      expiresAt,
+    },
+  });
+
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: expiresAt,
+  });
+  clearCurrentUserCache();
+  invalidateAuthDataCache();
+}
+
+export async function clearSession() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+
+  if (token) {
+    currentUserCache.delete(hashSessionToken(token));
+    await prisma.userSession.deleteMany({
+      where: { tokenHash: hashSessionToken(token) },
+    });
+  }
+
+  cookieStore.delete(SESSION_COOKIE);
+  clearCurrentUserCache();
+  invalidateAuthDataCache();
+}
+
+export async function getCurrentUser() {
+  await ensureSystemRoles();
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+
+  if (!token) {
+    return null;
+  }
+
+  const tokenHash = hashSessionToken(token);
+  const cached = currentUserCache.get(tokenHash);
+  const now = Date.now();
+
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const currentUser = await buildCurrentUser(tokenHash);
+  currentUserCache.set(tokenHash, {
+    expiresAt: now + CURRENT_USER_CACHE_TTL_MS,
+    value: currentUser,
+  });
+
+  return currentUser;
+}
+
 export async function requireCurrentUser() {
   const user = await getCurrentUser();
   if (!user || !user.isActive || user.disabledByUser) {
@@ -288,4 +327,8 @@ export function validatePassword(password: string) {
   }
 
   return null;
+}
+
+export function clearCurrentUserCache() {
+  currentUserCache.clear();
 }

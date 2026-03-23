@@ -10,6 +10,7 @@ import {
   type AllianceDuelScoreType,
 } from "@/utils/allianceDuel";
 import { requirePermission } from "@/utils/auth";
+import { invalidateDuelDataCache } from "@/utils/cacheTags";
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const HUGGINGFACE_VLM_MODEL = process.env.HUGGINGFACE_VLM_MODEL || "zai-org/GLM-4.5V";
@@ -256,6 +257,7 @@ export async function saveAllianceDuelRequirement(input: {
         minimumScore: Math.max(0, Math.round(Number(input.minimumScore) || 0)),
       },
     });
+    invalidateDuelDataCache();
     return { success: true };
   } catch (error: any) {
     console.error("ALLIANCE DUEL REQUIREMENT ERROR:", error);
@@ -302,6 +304,7 @@ export async function saveAllianceDuelManualScore(input: {
         source: "manual",
       },
     });
+    invalidateDuelDataCache();
     return { success: true };
   } catch (error: any) {
     console.error("ALLIANCE DUEL MANUAL SAVE ERROR:", error);
@@ -395,6 +398,7 @@ export async function saveAllianceDuelParsedEntries(input: {
         })
       )
     );
+    invalidateDuelDataCache();
     return {
       success: true,
       appliedCount: matchedEntries.length,
@@ -516,6 +520,7 @@ export async function processAllianceDuelScreenshot(input: {
         })
       )
     );
+    invalidateDuelDataCache();
     return {
       success: true,
       appliedCount: matchedEntries.length,

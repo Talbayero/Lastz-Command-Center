@@ -1,4 +1,8 @@
+import "server-only";
+
+import { unstable_cache } from "next/cache";
 import prisma from "@/utils/db";
+import { CACHE_TAGS } from "@/utils/cacheTags";
 
 type SnapshotLike = {
   createdAt: Date;
@@ -49,64 +53,71 @@ function flattenPlayerSnapshot(player: PlayerLike, snapshot?: SnapshotLike | nul
   };
 }
 
-export async function getAllianceAverage() {
-  const players = await prisma.player.findMany({
-    select: {
-      snapshots: {
-        select: {
-          techPower: true,
-          heroPower: true,
-          troopPower: true,
-          modVehiclePower: true,
-          structurePower: true,
+const getAllianceAverageCached = unstable_cache(
+  async () => {
+    const players = await prisma.player.findMany({
+      select: {
+        snapshots: {
+          select: {
+            techPower: true,
+            heroPower: true,
+            troopPower: true,
+            modVehiclePower: true,
+            structurePower: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
-        orderBy: { createdAt: "desc" },
-        take: 1,
       },
-    },
-  });
+    });
 
-  const latestSnapshots = players
-    .map((player) => player.snapshots[0])
-    .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot));
+    const latestSnapshots = players
+      .map((player) => player.snapshots[0])
+      .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot));
 
-  if (latestSnapshots.length === 0) {
-    return {
-      techPower: 0,
-      heroPower: 0,
-      troopPower: 0,
-      modVehiclePower: 0,
-      structurePower: 0,
-    };
-  }
-
-  const totals = latestSnapshots.reduce(
-    (acc, snapshot) => ({
-      techPower: acc.techPower + snapshot.techPower,
-      heroPower: acc.heroPower + snapshot.heroPower,
-      troopPower: acc.troopPower + snapshot.troopPower,
-      modVehiclePower: acc.modVehiclePower + snapshot.modVehiclePower,
-      structurePower: acc.structurePower + snapshot.structurePower,
-    }),
-    {
-      techPower: 0,
-      heroPower: 0,
-      troopPower: 0,
-      modVehiclePower: 0,
-      structurePower: 0,
+    if (latestSnapshots.length === 0) {
+      return {
+        techPower: 0,
+        heroPower: 0,
+        troopPower: 0,
+        modVehiclePower: 0,
+        structurePower: 0,
+      };
     }
-  );
 
-  return {
-    techPower: totals.techPower / latestSnapshots.length,
-    heroPower: totals.heroPower / latestSnapshots.length,
-    troopPower: totals.troopPower / latestSnapshots.length,
-    modVehiclePower: totals.modVehiclePower / latestSnapshots.length,
-    structurePower: totals.structurePower / latestSnapshots.length,
-  };
-}
+    const totals = latestSnapshots.reduce(
+      (acc, snapshot) => ({
+        techPower: acc.techPower + snapshot.techPower,
+        heroPower: acc.heroPower + snapshot.heroPower,
+        troopPower: acc.troopPower + snapshot.troopPower,
+        modVehiclePower: acc.modVehiclePower + snapshot.modVehiclePower,
+        structurePower: acc.structurePower + snapshot.structurePower,
+      }),
+      {
+        techPower: 0,
+        heroPower: 0,
+        troopPower: 0,
+        modVehiclePower: 0,
+        structurePower: 0,
+      }
+    );
 
-export async function getSelectedPlayer(targetName?: string) {
+    return {
+      techPower: totals.techPower / latestSnapshots.length,
+      heroPower: totals.heroPower / latestSnapshots.length,
+      troopPower: totals.troopPower / latestSnapshots.length,
+      modVehiclePower: totals.modVehiclePower / latestSnapshots.length,
+      structurePower: totals.structurePower / latestSnapshots.length,
+    };
+  },
+  ["alliance-average"],
+  {
+    revalidate: 60,
+    tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.roster, CACHE_TAGS.profile],
+  }
+);
+
+async function fetchSelectedPlayer(targetName?: string) {
   const player = targetName
     ? await prisma.player.findFirst({
         where: { name: { equals: targetName, mode: "insensitive" } },
@@ -169,10 +180,6 @@ export async function getSelectedPlayer(targetName?: string) {
         },
       });
 
-  if (!player && targetName) {
-    return getSelectedPlayer();
-  }
-
   if (!player) {
     return null;
   }
@@ -180,73 +187,118 @@ export async function getSelectedPlayer(targetName?: string) {
   return flattenPlayerSnapshot(player, player.snapshots[0]);
 }
 
-export async function getRosterData() {
-  const players = await prisma.player.findMany({
-    orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-      totalPower: true,
-      kills: true,
-      latestScore: true,
-      gloryWarStatus: true,
-      march1Power: true,
-      march2Power: true,
-      march3Power: true,
-      march4Power: true,
-      snapshots: {
-        select: {
-          createdAt: true,
-          kills: true,
-          totalPower: true,
-          structurePower: true,
-          techPower: true,
-          troopPower: true,
-          heroPower: true,
-          modVehiclePower: true,
-          score: true,
-        },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
-    },
-  });
+const getSelectedPlayerCached = unstable_cache(
+  async (targetName?: string) => {
+    const player = await fetchSelectedPlayer(targetName);
+    if (!player && targetName) {
+      return fetchSelectedPlayer();
+    }
+    return player;
+  },
+  ["selected-player"],
+  {
+    revalidate: 60,
+    tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.leaderboard, CACHE_TAGS.profile],
+  }
+);
 
-  return players.map((player) => flattenPlayerSnapshot(player, player.snapshots[0]));
+const getRosterDataCached = unstable_cache(
+  async () => {
+    const players = await prisma.player.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        totalPower: true,
+        kills: true,
+        latestScore: true,
+        gloryWarStatus: true,
+        march1Power: true,
+        march2Power: true,
+        march3Power: true,
+        march4Power: true,
+        snapshots: {
+          select: {
+            createdAt: true,
+            kills: true,
+            totalPower: true,
+            structurePower: true,
+            techPower: true,
+            troopPower: true,
+            heroPower: true,
+            modVehiclePower: true,
+            score: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+
+    return players.map((player) => flattenPlayerSnapshot(player, player.snapshots[0]));
+  },
+  ["roster-data"],
+  {
+    revalidate: 60,
+    tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.roster, CACHE_TAGS.profile],
+  }
+);
+
+const getLeaderboardDataCached = unstable_cache(
+  async () => {
+    const players = await prisma.player.findMany({
+      orderBy: { latestScore: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        name: true,
+        totalPower: true,
+        kills: true,
+        latestScore: true,
+        gloryWarStatus: true,
+        march1Power: true,
+        march2Power: true,
+        march3Power: true,
+        march4Power: true,
+        snapshots: {
+          select: {
+            createdAt: true,
+            kills: true,
+            totalPower: true,
+            structurePower: true,
+            techPower: true,
+            troopPower: true,
+            heroPower: true,
+            modVehiclePower: true,
+            score: true,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+
+    return players.map((player) => flattenPlayerSnapshot(player, player.snapshots[0]));
+  },
+  ["leaderboard-data"],
+  {
+    revalidate: 60,
+    tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.leaderboard],
+  }
+);
+
+export async function getAllianceAverage() {
+  return getAllianceAverageCached();
+}
+
+export async function getSelectedPlayer(targetName?: string) {
+  return getSelectedPlayerCached(targetName);
+}
+
+export async function getRosterData() {
+  return getRosterDataCached();
 }
 
 export async function getLeaderboardData() {
-  const players = await prisma.player.findMany({
-    orderBy: { latestScore: "desc" },
-    take: 10,
-    select: {
-      id: true,
-      name: true,
-      totalPower: true,
-      kills: true,
-      latestScore: true,
-      gloryWarStatus: true,
-      march1Power: true,
-      march2Power: true,
-      march3Power: true,
-      march4Power: true,
-      snapshots: {
-        select: {
-          createdAt: true,
-          kills: true,
-          totalPower: true,
-          structurePower: true,
-          techPower: true,
-          troopPower: true,
-          heroPower: true,
-          modVehiclePower: true,
-          score: true,
-        },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
-    },
-  });
-
-  return players.map((player) => flattenPlayerSnapshot(player, player.snapshots[0]));
+  return getLeaderboardDataCached();
 }

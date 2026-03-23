@@ -1,8 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import prisma from "@/utils/db";
 import {
+  clearCurrentUserCache,
   clearSession,
   createSession,
   getRoleByName,
@@ -13,6 +13,7 @@ import {
   validatePassword,
   verifyPassword,
 } from "@/utils/auth";
+import { invalidateAdminDataCache, invalidateAuthDataCache, invalidatePlayerDataCache } from "@/utils/cacheTags";
 import { emptyPermissions, type PermissionKey } from "@/utils/permissions";
 
 type CredentialsInput = {
@@ -110,7 +111,12 @@ export async function signUpUser(input: CredentialsInput) {
     });
 
     await createSession(user.id);
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAuthDataCache();
+    invalidateAdminDataCache();
+    if (isBootstrapAdmin) {
+      invalidatePlayerDataCache();
+    }
     return { success: true };
   } catch (error: unknown) {
     console.error("SIGNUP ERROR:", error);
@@ -155,7 +161,8 @@ export async function loginUser(input: CredentialsInput) {
     });
 
     await createSession(user.id);
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAuthDataCache();
     return { success: true, mustChangePassword: user.mustChangePassword };
   } catch (error: unknown) {
     console.error("LOGIN ERROR:", error);
@@ -165,7 +172,8 @@ export async function loginUser(input: CredentialsInput) {
 
 export async function logoutUser() {
   await clearSession();
-  revalidatePath("/");
+  clearCurrentUserCache();
+  invalidateAuthDataCache();
   return { success: true };
 }
 
@@ -202,7 +210,8 @@ export async function changePassword(input: {
       },
     });
 
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAuthDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("CHANGE PASSWORD ERROR:", error);
@@ -220,7 +229,9 @@ export async function disableOwnAccount() {
     });
 
     await clearSession();
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAuthDataCache();
+    invalidateAdminDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("DISABLE ACCOUNT ERROR:", error);
@@ -253,7 +264,8 @@ export async function adminUpdateUser(input: {
       },
     });
 
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAdminDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("ADMIN UPDATE USER ERROR:", error);
@@ -286,7 +298,7 @@ export async function adminCreateUserAccount(input: {
       },
     });
 
-    revalidatePath("/");
+    invalidateAdminDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("ADMIN CREATE USER ERROR:", error);
@@ -318,7 +330,8 @@ export async function adminResetUserPassword(input: { userId: string }) {
       }),
     ]);
 
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAdminDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("ADMIN RESET PASSWORD ERROR:", error);
@@ -345,7 +358,8 @@ export async function createRole(input: { name: string; permissions: Partial<Rec
       },
     });
 
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAdminDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("CREATE ROLE ERROR:", error);
@@ -385,7 +399,8 @@ export async function updateRole(input: {
       },
     });
 
-    revalidatePath("/");
+    clearCurrentUserCache();
+    invalidateAdminDataCache();
     return { success: true };
   } catch (error: unknown) {
     console.error("UPDATE ROLE ERROR:", error);

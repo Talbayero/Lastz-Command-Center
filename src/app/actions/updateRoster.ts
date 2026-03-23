@@ -1,10 +1,27 @@
 "use server";
 
 import prisma from "@/utils/db";
-import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/utils/auth";
+import { invalidatePlayerDataCache } from "@/utils/cacheTags";
 
-export async function updateRoster(players: any[]) {
+type RosterUpdateInput = {
+  id: string;
+  name: string;
+  kills?: number;
+  techPower?: number;
+  heroPower?: number;
+  troopPower?: number;
+  structurePower?: number;
+  modVehiclePower?: number;
+  march1Power?: number;
+  march2Power?: number;
+  march3Power?: number;
+  march4Power?: number;
+  totalPower?: number;
+  gloryWarStatus?: string;
+};
+
+export async function updateRoster(players: RosterUpdateInput[]) {
   try {
     await requirePermission("editRoster");
     const SCORE_WEIGHTS = { kills: 0.30, tech: 0.25, hero: 0.20, troop: 0.15, structure: 0.05, modVehicle: 0.05 };
@@ -117,11 +134,11 @@ export async function updateRoster(players: any[]) {
 
     await prisma.$transaction(operations);
 
-    revalidatePath("/");
+    invalidatePlayerDataCache();
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ROSTER UPDATE ERROR:", error);
-    return { success: false, error: error.message };
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update roster." };
   }
 }
 
@@ -138,10 +155,10 @@ export async function deleteRosterPlayer(playerId: string) {
       }),
     ]);
 
-    revalidatePath("/");
+    invalidatePlayerDataCache();
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("ROSTER DELETE ERROR:", error);
-    return { success: false, error: error.message || "Failed to delete player." };
+    return { success: false, error: error instanceof Error ? error.message : "Failed to delete player." };
   }
 }
