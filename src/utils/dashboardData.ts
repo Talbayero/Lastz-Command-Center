@@ -51,8 +51,15 @@ function flattenPlayerSnapshot(player: PlayerLike, snapshot?: SnapshotLike | nul
 
 export async function getAllianceAverage() {
   const players = await prisma.player.findMany({
-    include: {
+    select: {
       snapshots: {
+        select: {
+          techPower: true,
+          heroPower: true,
+          troopPower: true,
+          modVehiclePower: true,
+          structurePower: true,
+        },
         orderBy: { createdAt: "desc" },
         take: 1,
       },
@@ -103,8 +110,29 @@ export async function getSelectedPlayer(targetName?: string) {
   const player = targetName
     ? await prisma.player.findFirst({
         where: { name: { equals: targetName, mode: "insensitive" } },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          totalPower: true,
+          kills: true,
+          latestScore: true,
+          gloryWarStatus: true,
+          march1Power: true,
+          march2Power: true,
+          march3Power: true,
+          march4Power: true,
           snapshots: {
+            select: {
+              createdAt: true,
+              kills: true,
+              totalPower: true,
+              structurePower: true,
+              techPower: true,
+              troopPower: true,
+              heroPower: true,
+              modVehiclePower: true,
+              score: true,
+            },
             orderBy: { createdAt: "desc" },
             take: 1,
           },
@@ -112,8 +140,29 @@ export async function getSelectedPlayer(targetName?: string) {
       })
     : await prisma.player.findFirst({
         orderBy: { latestScore: "desc" },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          totalPower: true,
+          kills: true,
+          latestScore: true,
+          gloryWarStatus: true,
+          march1Power: true,
+          march2Power: true,
+          march3Power: true,
+          march4Power: true,
           snapshots: {
+            select: {
+              createdAt: true,
+              kills: true,
+              totalPower: true,
+              structurePower: true,
+              techPower: true,
+              troopPower: true,
+              heroPower: true,
+              modVehiclePower: true,
+              score: true,
+            },
             orderBy: { createdAt: "desc" },
             take: 1,
           },
@@ -134,8 +183,29 @@ export async function getSelectedPlayer(targetName?: string) {
 export async function getRosterData() {
   const players = await prisma.player.findMany({
     orderBy: { name: "asc" },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      totalPower: true,
+      kills: true,
+      latestScore: true,
+      gloryWarStatus: true,
+      march1Power: true,
+      march2Power: true,
+      march3Power: true,
+      march4Power: true,
       snapshots: {
+        select: {
+          createdAt: true,
+          kills: true,
+          totalPower: true,
+          structurePower: true,
+          techPower: true,
+          troopPower: true,
+          heroPower: true,
+          modVehiclePower: true,
+          score: true,
+        },
         orderBy: { createdAt: "desc" },
         take: 1,
       },
@@ -149,8 +219,29 @@ export async function getLeaderboardData() {
   const players = await prisma.player.findMany({
     orderBy: { latestScore: "desc" },
     take: 10,
-    include: {
+    select: {
+      id: true,
+      name: true,
+      totalPower: true,
+      kills: true,
+      latestScore: true,
+      gloryWarStatus: true,
+      march1Power: true,
+      march2Power: true,
+      march3Power: true,
+      march4Power: true,
       snapshots: {
+        select: {
+          createdAt: true,
+          kills: true,
+          totalPower: true,
+          structurePower: true,
+          techPower: true,
+          troopPower: true,
+          heroPower: true,
+          modVehiclePower: true,
+          score: true,
+        },
         orderBy: { createdAt: "desc" },
         take: 1,
       },

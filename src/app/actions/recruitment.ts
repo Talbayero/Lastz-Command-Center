@@ -1,6 +1,4 @@
 "use server";
-
-import { revalidatePath } from "next/cache";
 import prisma from "@/utils/db";
 import { requirePermission } from "@/utils/auth";
 import {
@@ -117,7 +115,6 @@ export async function saveRecruitmentScoringConfig(input: {
       },
     });
 
-    revalidatePath("/");
     return { success: true, weights };
   } catch (error: unknown) {
     console.error("SAVE RECRUITMENT SCORING CONFIG ERROR:", error);
@@ -161,7 +158,6 @@ export async function saveApplicant(input: ApplicantInput) {
         })
       : await prisma.allianceApplicant.create({ data });
 
-    revalidatePath("/");
     return { success: true, record };
   } catch (error: unknown) {
     console.error("SAVE APPLICANT ERROR:", error);
@@ -222,7 +218,6 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
         })
       : await prisma.migrationCandidate.create({ data });
 
-    revalidatePath("/");
     return { success: true, record };
   } catch (error: unknown) {
     console.error("SAVE MIGRATION CANDIDATE ERROR:", error);
@@ -234,7 +229,6 @@ export async function deleteApplicant(input: { id: string }) {
   try {
     await requirePermission("manageRecruitment");
     await prisma.allianceApplicant.delete({ where: { id: input.id } });
-    revalidatePath("/");
     return { success: true };
   } catch (error: unknown) {
     console.error("DELETE APPLICANT ERROR:", error);
@@ -246,7 +240,6 @@ export async function deleteMigrationCandidate(input: { id: string }) {
   try {
     await requirePermission("manageRecruitment");
     await prisma.migrationCandidate.delete({ where: { id: input.id } });
-    revalidatePath("/");
     return { success: true };
   } catch (error: unknown) {
     console.error("DELETE MIGRATION CANDIDATE ERROR:", error);

@@ -1,5 +1,4 @@
 import Link from "next/link";
-export const dynamic = "force-dynamic";
 import OcrUploader from "@/components/OcrUploader";
 import Leaderboard from "@/components/Leaderboard";
 import PlayerRadar from "@/components/PlayerRadar";
@@ -61,13 +60,13 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const requestedView = searchParams.view || "performance";
   const currentUser = await getCurrentUser();
 
-  const allPlayers = await prisma.player.findMany({
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
-
   if (!currentUser) {
-    return <AuthPanel players={allPlayers.map((player) => player.name)} />;
+    const authPlayers = await prisma.player.findMany({
+      orderBy: { name: "asc" },
+      select: { name: true },
+    });
+
+    return <AuthPanel players={authPlayers.map((player) => player.name)} />;
   }
 
   const canViewOverview = hasPermission(currentUser, "viewAllianceOverview");
@@ -98,18 +97,68 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const shouldLoadRecruitmentData = currentView === "recruitment" && canViewRecruitment;
   const profileTargetName = currentView === "profile" ? targetName || currentUser.playerName : undefined;
 
-  const [allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
-    getAllianceAverage(),
-    getSelectedPlayer(targetName),
-    getRosterData(),
-    canManageBugs ? prisma.bug.findMany({ orderBy: { createdAt: "desc" } }) : Promise.resolve([]),
-    canAccessAdmin ? prisma.role.findMany({ orderBy: [{ isSystem: "desc" }, { name: "asc" }] }) : Promise.resolve([]),
+  const needsAllPlayers =
+    currentView === "performance" ||
+    currentView === "duel" ||
+    currentView === "admin" ||
+    (currentView === "profile" && canBrowseProfiles);
+  const needsAllianceAverage =
+    currentView === "profile" ||
+    currentView === "performance";
+  const needsSelectedPlayer = currentView === "performance";
+  const needsRosterData =
+    currentView === "overview" ||
+    currentView === "roster" ||
+    currentView === "profile";
+  const needsBugData =
+    (currentView === "bugs" && canManageBugs) ||
+    (currentView === "overview" && canManageBugs);
+
+  const [allPlayers, allianceAvg, selectedPlayerData, rosterData, bugData, adminRoles, adminUsers] = await Promise.all([
+    needsAllPlayers
+      ? prisma.player.findMany({
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+    needsAllianceAverage
+      ? getAllianceAverage()
+      : Promise.resolve({
+          techPower: 0,
+          heroPower: 0,
+          troopPower: 0,
+          modVehiclePower: 0,
+          structurePower: 0,
+        }),
+    needsSelectedPlayer ? getSelectedPlayer(targetName) : Promise.resolve(null),
+    needsRosterData ? getRosterData() : Promise.resolve([]),
+    needsBugData
+      ? prisma.bug.findMany({
+          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve([]),
+    canAccessAdmin
+      ? prisma.role.findMany({
+          orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+          select: { id: true, name: true, isSystem: true, permissions: true },
+        })
+      : Promise.resolve([]),
     canAccessAdmin
       ? prisma.user.findMany({
           orderBy: { player: { name: "asc" } },
-          include: {
-            player: true,
-            role: true,
+          select: {
+            id: true,
+            playerId: true,
+            roleId: true,
+            isActive: true,
+            disabledByUser: true,
+            lastLoginAt: true,
+            player: {
+              select: { id: true, name: true },
+            },
+            role: {
+              select: { name: true },
+            },
             sessions: {
               where: {
                 expiresAt: {
@@ -118,6 +167,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
               },
               orderBy: { createdAt: "desc" },
               take: 1,
+              select: { id: true, createdAt: true },
             },
           },
         })
@@ -165,16 +215,21 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   if (shouldLoadRecruitmentData) {
     try {
-      await prisma.recruitmentScoringConfig.upsert({
-        where: { scope: "applicants" },
-        update: {},
-        create: { scope: "applicants", weights: getDefaultWeights("applicants") },
+      const existingScopes = await prisma.recruitmentScoringConfig.findMany({
+        select: { scope: true },
       });
-      await prisma.recruitmentScoringConfig.upsert({
-        where: { scope: "migrations" },
-        update: {},
-        create: { scope: "migrations", weights: getDefaultWeights("migrations") },
-      });
+      const existingScopeSet = new Set(existingScopes.map((entry) => entry.scope));
+      const missingScopes = (["applicants", "migrations"] as const).filter((scope) => !existingScopeSet.has(scope));
+
+      if (missingScopes.length > 0) {
+        await prisma.recruitmentScoringConfig.createMany({
+          data: missingScopes.map((scope) => ({
+            scope,
+            weights: getDefaultWeights(scope),
+          })),
+          skipDuplicates: true,
+        });
+      }
 
       const [applicantConfig, migrationConfig, applicants, migrations] = await Promise.all([
         prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } }),
@@ -199,20 +254,68 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
       (resolvedTargetName
         ? await prisma.player.findFirst({
             where: { name: { equals: resolvedTargetName, mode: "insensitive" } },
-            include: {
+            select: {
+              id: true,
+              name: true,
+              totalPower: true,
+              kills: true,
+              latestScore: true,
+              gloryWarStatus: true,
+              march1Power: true,
+              march2Power: true,
+              march3Power: true,
+              march4Power: true,
+              updatedAt: true,
+              leaderNotes: true,
               snapshots: {
                 orderBy: { createdAt: "desc" },
                 take: 5,
+                select: {
+                  id: true,
+                  createdAt: true,
+                  totalPower: true,
+                  kills: true,
+                  score: true,
+                  structurePower: true,
+                  techPower: true,
+                  troopPower: true,
+                  heroPower: true,
+                  modVehiclePower: true,
+                },
               },
             },
           })
         : null) ??
       (await prisma.player.findUnique({
         where: { id: currentUser.playerId },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          totalPower: true,
+          kills: true,
+          latestScore: true,
+          gloryWarStatus: true,
+          march1Power: true,
+          march2Power: true,
+          march3Power: true,
+          march4Power: true,
+          updatedAt: true,
+          leaderNotes: true,
           snapshots: {
             orderBy: { createdAt: "desc" },
             take: 5,
+            select: {
+              id: true,
+              createdAt: true,
+              totalPower: true,
+              kills: true,
+              score: true,
+              structurePower: true,
+              techPower: true,
+              troopPower: true,
+              heroPower: true,
+              modVehiclePower: true,
+            },
           },
         },
       }));

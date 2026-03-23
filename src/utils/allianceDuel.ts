@@ -15,6 +15,11 @@ export const DEFAULT_ALLIANCE_DUEL_REQUIREMENTS: Record<AllianceDuelDayKey, { ev
   Sat: { eventName: "Enemy Buster", minimumScore: 6_000_000 },
 };
 
+const ALLIANCE_DUEL_REQUIREMENTS_ENSURE_TTL_MS = 10 * 60 * 1000;
+
+let lastAllianceDuelRequirementsEnsureAt = 0;
+let allianceDuelRequirementsEnsurePromise: Promise<void> | null = null;
+
 export function getAllianceDuelDayLabel(dayKey: string) {
   return DEFAULT_ALLIANCE_DUEL_REQUIREMENTS[dayKey as AllianceDuelDayKey]?.eventName ?? dayKey;
 }
@@ -24,6 +29,19 @@ export function getScoreScopeKey(scoreType: AllianceDuelScoreType, dayKey?: stri
 }
 
 export async function ensureAllianceDuelRequirements() {
+  const now = Date.now();
+  if (
+    lastAllianceDuelRequirementsEnsureAt &&
+    now - lastAllianceDuelRequirementsEnsureAt < ALLIANCE_DUEL_REQUIREMENTS_ENSURE_TTL_MS
+  ) {
+    return;
+  }
+
+  if (allianceDuelRequirementsEnsurePromise) {
+    return allianceDuelRequirementsEnsurePromise;
+  }
+
+  allianceDuelRequirementsEnsurePromise = (async () => {
   const existing = await prisma.allianceDuelRequirement.findMany({
     select: { dayKey: true },
   });
@@ -32,6 +50,7 @@ export async function ensureAllianceDuelRequirements() {
   const missing = ALLIANCE_DUEL_DAYS.filter((dayKey) => !existingKeys.has(dayKey));
 
   if (missing.length === 0) {
+    lastAllianceDuelRequirementsEnsureAt = Date.now();
     return;
   }
 
@@ -42,4 +61,10 @@ export async function ensureAllianceDuelRequirements() {
       minimumScore: DEFAULT_ALLIANCE_DUEL_REQUIREMENTS[dayKey].minimumScore,
     })),
   });
+    lastAllianceDuelRequirementsEnsureAt = Date.now();
+  })().finally(() => {
+    allianceDuelRequirementsEnsurePromise = null;
+  });
+
+  return allianceDuelRequirementsEnsurePromise;
 }

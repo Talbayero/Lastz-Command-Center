@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import prisma from "@/utils/db";
 import {
-  emptyPermissions,
   normalizePermissions,
   permissionKeys,
   type PermissionKey,
@@ -14,6 +13,10 @@ import {
 export const SESSION_COOKIE = "bom_session";
 const SESSION_TTL_DAYS = 30;
 export const TEMP_PASSWORD = "123456789";
+const SYSTEM_ROLE_ENSURE_TTL_MS = 10 * 60 * 1000;
+
+let lastSystemRoleEnsureAt = 0;
+let systemRoleEnsurePromise: Promise<void> | null = null;
 
 const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions; isSystem: boolean }> = [
   {
@@ -79,6 +82,16 @@ const defaultRoleDefinitions: Array<{ name: string; permissions: RolePermissions
 ];
 
 export async function ensureSystemRoles() {
+  const now = Date.now();
+  if (lastSystemRoleEnsureAt && now - lastSystemRoleEnsureAt < SYSTEM_ROLE_ENSURE_TTL_MS) {
+    return;
+  }
+
+  if (systemRoleEnsurePromise) {
+    return systemRoleEnsurePromise;
+  }
+
+  systemRoleEnsurePromise = (async () => {
   const existingRoles = await prisma.role.findMany({
     where: { name: { in: defaultRoleDefinitions.map((role) => role.name) } },
     select: { id: true, name: true, permissions: true },
@@ -122,6 +135,12 @@ export async function ensureSystemRoles() {
       data: { permissions: mergedPermissions },
     });
   }
+    lastSystemRoleEnsureAt = Date.now();
+  })().finally(() => {
+    systemRoleEnsurePromise = null;
+  });
+
+  return systemRoleEnsurePromise;
 }
 
 export async function getRoleByName(name: string) {
