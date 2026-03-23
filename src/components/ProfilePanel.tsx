@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { AlertTriangle, Bot, Sparkles } from "lucide-react";
+import { AlertTriangle, Sparkles } from "lucide-react";
 import OcrUploader from "@/components/OcrUploader";
 import { saveProfileData, saveProfileLeaderNotes } from "@/app/actions/profile";
 
@@ -317,10 +317,11 @@ export default function ProfilePanel({
                 <div className="mith-avatar-core" style={mithAvatarStyle}>
                   <div className="mith-avatar-frame" style={mithImageFrameStyle}>
                     <Image
-                      src="/mith-avatar.png"
+                      src="/mith-avatar-small.jpg"
                       alt="Mith hologram avatar"
                       fill
                       sizes="72px"
+                      quality={75}
                       style={{ objectFit: "cover" }}
                     />
                   </div>

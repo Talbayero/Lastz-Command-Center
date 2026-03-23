@@ -3,7 +3,6 @@
 import { useState, useTransition, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { parseLastZProfileImage } from "@/utils/ocrParser";
-import Tesseract from "tesseract.js";
 import { Upload, Loader2, CheckCircle2, PencilLine, ScanLine } from "lucide-react";
 import { savePlayerData } from "@/app/actions/savePlayer";
 import { getPlayers } from "@/app/actions/getPlayers";
@@ -40,6 +39,11 @@ type StatsFormProps = {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
+}
+
+async function getTesseract() {
+  const tesseractModule = await import("tesseract.js");
+  return tesseractModule.default;
 }
 
 async function cropNameBlob(file: File): Promise<Blob | null> {
@@ -153,6 +157,7 @@ async function extractNameFromImage(file: File): Promise<string> {
     let bestName = "";
     let bestScore = -1;
 
+    const Tesseract = await getTesseract();
     for (const variant of variants) {
       const result = await Tesseract.recognize(variant, "eng", {
         // @ts-expect-error Tesseract accepts this runtime option even though the package type omits it.

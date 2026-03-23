@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import prisma from "@/utils/db";
 import {
   ALLIANCE_DUEL_DAYS,
@@ -257,8 +256,6 @@ export async function saveAllianceDuelRequirement(input: {
         minimumScore: Math.max(0, Math.round(Number(input.minimumScore) || 0)),
       },
     });
-
-    revalidatePath("/");
     return { success: true };
   } catch (error: any) {
     console.error("ALLIANCE DUEL REQUIREMENT ERROR:", error);
@@ -305,8 +302,6 @@ export async function saveAllianceDuelManualScore(input: {
         source: "manual",
       },
     });
-
-    revalidatePath("/");
     return { success: true };
   } catch (error: any) {
     console.error("ALLIANCE DUEL MANUAL SAVE ERROR:", error);
@@ -400,8 +395,6 @@ export async function saveAllianceDuelParsedEntries(input: {
         })
       )
     );
-
-    revalidatePath("/");
     return {
       success: true,
       appliedCount: matchedEntries.length,
@@ -523,8 +516,6 @@ export async function processAllianceDuelScreenshot(input: {
         })
       )
     );
-
-    revalidatePath("/");
     return {
       success: true,
       appliedCount: matchedEntries.length,

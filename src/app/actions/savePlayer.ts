@@ -1,7 +1,6 @@
 "use server";
 
 import prisma from "@/utils/db";
-import { revalidatePath } from "next/cache";
 import { hasPermission, requirePermission } from "@/utils/auth";
 
 type SavePlayerInput = {
@@ -133,8 +132,6 @@ export async function savePlayerData(data: SavePlayerInput) {
         },
       });
     });
-
-    revalidatePath("/");
     return { success: true };
 
   } catch (error: unknown) {

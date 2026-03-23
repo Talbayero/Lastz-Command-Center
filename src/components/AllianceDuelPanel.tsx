@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Tesseract from "tesseract.js";
 import { Upload, Loader2 } from "lucide-react";
 import {
   ALLIANCE_DUEL_DAYS,
@@ -72,6 +71,11 @@ type LocalParsedEntry = {
   rank: number | null;
   score: number;
 };
+
+async function getTesseract() {
+  const tesseractModule = await import("tesseract.js");
+  return tesseractModule.default;
+}
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
@@ -869,6 +873,7 @@ async function parseAllianceDuelImageLocally(blob: Blob) {
 }
 
 async function recognizeDuelRows(dataUrl: string): Promise<LocalParsedEntry[]> {
+  const Tesseract = await getTesseract();
   const result = await Tesseract.recognize(dataUrl, "eng", {
     // @ts-expect-error Tesseract accepts these runtime OCR options even though the package type omits them.
     tessedit_pageseg_mode: "6",

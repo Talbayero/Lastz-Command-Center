@@ -269,7 +269,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
               leaderNotes: true,
               snapshots: {
                 orderBy: { createdAt: "desc" },
-                take: 5,
+                take: 3,
                 select: {
                   id: true,
                   createdAt: true,
@@ -303,7 +303,7 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
           leaderNotes: true,
           snapshots: {
             orderBy: { createdAt: "desc" },
-            take: 5,
+            take: 3,
             select: {
               id: true,
               createdAt: true,

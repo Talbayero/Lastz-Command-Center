@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import prisma from "@/utils/db";
 import { hasPermission, requireCurrentUser } from "@/utils/auth";
 
@@ -108,8 +107,6 @@ export async function saveProfileData(input: ProfileInput) {
         },
       }),
     ]);
-
-    revalidatePath("/");
     return { success: true };
   } catch (error: unknown) {
     console.error("PROFILE SAVE ERROR:", error);
@@ -130,8 +127,6 @@ export async function saveProfileLeaderNotes(input: { playerId: string; leaderNo
       where: { id: input.playerId },
       data: { leaderNotes: input.leaderNotes.trim() },
     });
-
-    revalidatePath("/");
     return { success: true };
   } catch (error: unknown) {
     console.error("PROFILE NOTES ERROR:", error);
