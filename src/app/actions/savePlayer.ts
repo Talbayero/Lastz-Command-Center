@@ -3,6 +3,7 @@
 import prisma from "@/utils/db";
 import { hasPermission, requirePermission } from "@/utils/auth";
 import { invalidatePlayerDataCache } from "@/utils/cacheTags";
+import { prunePlayerSnapshots } from "@/utils/snapshotRetention";
 import { normalizeNonNegativeInt, sanitizePlayerName } from "@/utils/validation";
 
 type SavePlayerInput = {
@@ -133,6 +134,8 @@ export async function savePlayerData(data: SavePlayerInput) {
           score: rawScore,
         },
       });
+
+      await prunePlayerSnapshots(tx, player.id);
     });
     invalidatePlayerDataCache();
     return { success: true };

@@ -3,6 +3,7 @@
 import prisma from "@/utils/db";
 import { hasPermission, requireCurrentUser } from "@/utils/auth";
 import { invalidateDuelDataCache, invalidatePlayerDataCache } from "@/utils/cacheTags";
+import { prunePlayerSnapshots } from "@/utils/snapshotRetention";
 import {
   ALLOWED_GLORY_WAR_STATUSES,
   ensureAllowedValue,
@@ -85,8 +86,8 @@ export async function saveProfileData(input: ProfileInput) {
       structurePower * SCORE_WEIGHTS.structure +
       modVehiclePower * SCORE_WEIGHTS.modVehicle;
 
-    await prisma.$transaction([
-      prisma.player.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.player.update({
         where: { id: playerId },
         data: {
           name,
@@ -99,8 +100,8 @@ export async function saveProfileData(input: ProfileInput) {
           march4Power,
           latestScore,
         },
-      }),
-      prisma.snapshot.create({
+      });
+      await tx.snapshot.create({
         data: {
           playerId,
           kills,
@@ -112,8 +113,9 @@ export async function saveProfileData(input: ProfileInput) {
           modVehiclePower,
           score: latestScore,
         },
-      }),
-    ]);
+      });
+      await prunePlayerSnapshots(tx, playerId);
+    });
     invalidatePlayerDataCache();
     invalidateDuelDataCache();
     return { success: true };
