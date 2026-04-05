@@ -384,6 +384,32 @@ export async function adminResetUserPassword(input: { userId: string; tempPasswo
   }
 }
 
+export async function adminDeleteUser(input: { userId: string }) {
+  try {
+    const actingUser = await requirePermission("manageUsers");
+    const userId = ensureRecordId(input.userId, "User");
+
+    if (actingUser.id === userId) {
+      return {
+        success: false,
+        error: "Use the account panel to manage your own account. Admin self-deletes are protected.",
+      };
+    }
+
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+
+    clearCurrentUserCache();
+    invalidateAdminDataCache();
+    invalidateAuthDataCache();
+    return { success: true };
+  } catch (error: unknown) {
+    console.error("ADMIN DELETE USER ERROR:", error);
+    return { success: false, error: getErrorMessage(error, "Failed to delete user.") };
+  }
+}
+
 export async function createRole(input: { name: string; permissions: Partial<Record<PermissionKey, boolean>> }) {
   try {
     await requirePermission("manageRoles");

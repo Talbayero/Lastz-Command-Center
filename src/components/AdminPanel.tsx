@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   adminCreateUserAccount,
+  adminDeleteUser,
   adminResetUserPassword,
   adminUpdateUser,
   createRole,
@@ -50,9 +51,10 @@ export default function AdminPanel({
   const [roles, setRoles] = useState(initialRoles);
   const [roster, setRoster] = useState(initialRoster);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [activeUserAction, setActiveUserAction] = useState<{ userId: string; type: "save" | "reset" } | null>(null);
+  const [activeUserAction, setActiveUserAction] = useState<{ userId: string; type: "save" | "reset" | "delete" } | null>(null);
   const [recentlySavedUserId, setRecentlySavedUserId] = useState<string | null>(null);
   const [recentlyResetUserId, setRecentlyResetUserId] = useState<string | null>(null);
+  const [recentlyDeletedUserId, setRecentlyDeletedUserId] = useState<string | null>(null);
   const [newRoleName, setNewRoleName] = useState("");
   const [newRolePermissions, setNewRolePermissions] = useState<RolePermissions>(() => emptyRolePermissions());
   const [userPanelOpen, setUserPanelOpen] = useState(true);
@@ -201,6 +203,53 @@ export default function AdminPanel({
     });
   };
 
+  const deleteUser = (entry: RosterEntry) => {
+    if (!entry.userId) return;
+
+    const confirmed = window.confirm(`Delete the login account for ${entry.playerName}? The BOM player record will stay, but the user account and active sessions will be removed.`);
+    if (!confirmed) return;
+
+    const userId = entry.userId;
+    setMessage(null);
+    setActiveUserAction({ userId, type: "delete" });
+    setRecentlyDeletedUserId(null);
+
+    startTransition(async () => {
+      try {
+        const result = await adminDeleteUser({ userId });
+
+        if (result.success) {
+          setRoster((prev) =>
+            prev.map((item) =>
+              item.userId === userId
+                ? {
+                    ...item,
+                    hasAccount: false,
+                    userId: null,
+                    roleId: defaultRoleId,
+                    roleName: null,
+                    isActive: true,
+                    disabledByUser: false,
+                    isOnline: false,
+                    lastLoginAt: null,
+                  }
+                : item
+            )
+          );
+          setMessage({ type: "success", text: `${entry.playerName} account deleted.` });
+          setRecentlyDeletedUserId(userId);
+          window.setTimeout(() => setRecentlyDeletedUserId((current) => (current === userId ? null : current)), 3000);
+        } else {
+          setMessage({ type: "error", text: result.error || "Failed to delete user." });
+        }
+      } catch (error: unknown) {
+        setMessage({ type: "error", text: getErrorMessage(error, "Failed to delete user.") });
+      }
+
+      setActiveUserAction(null);
+    });
+  };
+
   const saveRole = (role: RoleRecord) => {
     setMessage(null);
     startTransition(async () => {
@@ -282,8 +331,11 @@ export default function AdminPanel({
                     activeUserAction?.userId === entry.userId && activeUserAction.type === "save";
                   const isResettingThisUser =
                     activeUserAction?.userId === entry.userId && activeUserAction.type === "reset";
+                  const isDeletingThisUser =
+                    activeUserAction?.userId === entry.userId && activeUserAction.type === "delete";
                   const wasSavedThisUser = entry.userId === recentlySavedUserId;
                   const wasResetThisUser = entry.userId === recentlyResetUserId;
+                  const wasDeletedThisUser = entry.userId === recentlyDeletedUserId;
 
                   return (
                     <>
@@ -381,6 +433,14 @@ export default function AdminPanel({
                     >
                       {isResettingThisUser ? "RESETTING..." : wasResetThisUser ? "RESET" : "RESET PASSWORD"}
                     </button>
+                    <button
+                      className="cyber-button"
+                      onClick={() => deleteUser(entry)}
+                      disabled={isPending || isCurrentUser}
+                      style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
+                    >
+                      {isDeletingThisUser ? "DELETING..." : wasDeletedThisUser ? "DELETED" : "DELETE USER"}
+                    </button>
                     {wasSavedThisUser && (
                       <span style={{ color: "var(--accent-neon)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
                         Changes saved
@@ -389,6 +449,11 @@ export default function AdminPanel({
                     {wasResetThisUser && (
                       <span style={{ color: "var(--accent-purple)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
                         Temp password restored
+                      </span>
+                    )}
+                    {wasDeletedThisUser && (
+                      <span style={{ color: "var(--accent-red)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
+                        Account removed
                       </span>
                     )}
                   </>
