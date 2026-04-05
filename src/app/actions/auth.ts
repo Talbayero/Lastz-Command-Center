@@ -18,7 +18,7 @@ import { invalidateAdminDataCache, invalidateAuthDataCache, invalidatePlayerData
 import { emptyPermissions, type PermissionKey } from "@/utils/permissions";
 import {
   ensureRecordId,
-  sanitizePlayerName,
+  sanitizeSingleLineText,
   sanitizeRoleName,
 } from "@/utils/validation";
 
@@ -33,7 +33,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 function normalizePlayerName(name: string) {
-  return sanitizePlayerName(name);
+  return sanitizeSingleLineText(name, 80);
 }
 
 export async function signUpUser(input: CredentialsInput) {
