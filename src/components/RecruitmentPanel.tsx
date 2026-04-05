@@ -1073,6 +1073,7 @@ export default function RecruitmentPanel({
           }
           setDirtyWeights((prev) => ({ ...prev, [scope]: false }));
           setMessage({ type: "success", text: `${scope === "applicants" ? "Applicant" : "Migration"} scoring formula saved.` });
+          router.refresh();
         } else {
           setMessage({ type: "error", text: result.error || "Failed to save recruitment scoring weights." });
         }
