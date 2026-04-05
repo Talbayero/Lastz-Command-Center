@@ -636,6 +636,11 @@ export default function RecruitmentPanel({
   const [isScanning, setIsScanning] = useState(false);
   const [applicantWeights, setApplicantWeights] = useState<RecruitmentScoreWeights>(initialApplicantWeights);
   const [migrationWeights, setMigrationWeights] = useState<RecruitmentScoreWeights>(initialMigrationWeights);
+  const [dirtyWeights, setDirtyWeights] = useState<{ applicants: boolean; migrations: boolean }>({
+    applicants: false,
+    migrations: false,
+  });
+  const [savingWeightsScope, setSavingWeightsScope] = useState<"applicants" | "migrations" | null>(null);
   const [expandedRowIds, setExpandedRowIds] = useState<string[]>([]);
   const [applicantSort, setApplicantSort] = useState<{ key: ApplicantSortKey; direction: SortDirection }>({
     key: "score",
@@ -646,34 +651,11 @@ export default function RecruitmentPanel({
     direction: "desc",
   });
   const formPanelRef = useRef<HTMLElement | null>(null);
-  const hasHydratedWeightsRef = useRef(false);
-
   useEffect(() => {
     setApplicantWeights(initialApplicantWeights);
     setMigrationWeights(initialMigrationWeights);
+    setDirtyWeights({ applicants: false, migrations: false });
   }, [initialApplicantWeights, initialMigrationWeights]);
-
-  useEffect(() => {
-    if (!canManage) return;
-    if (!hasHydratedWeightsRef.current) {
-      hasHydratedWeightsRef.current = true;
-      return;
-    }
-
-    const timeout = window.setTimeout(async () => {
-      const scope = tab === "applicants" ? "applicants" : "migrations";
-      const weights = scope === "applicants" ? applicantWeights : migrationWeights;
-      const result = await saveRecruitmentScoringConfig({ scope, weights });
-      if (!result.success) {
-        setMessage({
-          type: "error",
-          text: result.error || "Failed to save recruitment scoring weights.",
-        });
-      }
-    }, 400);
-
-    return () => window.clearTimeout(timeout);
-  }, [applicantWeights, migrationWeights, tab, canManage]);
 
   const applicantRows = useMemo<ApplicantRow[]>(
     () =>
@@ -736,6 +718,8 @@ export default function RecruitmentPanel({
     tab === "applicants"
       ? getFormulaLabel("applicants", applicantWeights)
       : getFormulaLabel("migrations", migrationWeights);
+  const currentWeightTotal = totalWeight(tab === "applicants" ? applicantWeights : migrationWeights);
+  const currentWeightsDirty = dirtyWeights[tab];
 
   const downloadCsvTemplate = () => {
     const csv = createCsvTemplate(tab);
@@ -1058,6 +1042,47 @@ export default function RecruitmentPanel({
     });
   };
 
+  const saveFormula = () => {
+    if (!canManage) return;
+
+    const scope = tab;
+    const weights = scope === "applicants" ? applicantWeights : migrationWeights;
+    const total = totalWeight(weights);
+    if (Math.abs(total - 1) >= 0.0001) {
+      setMessage({
+        type: "error",
+        text: "The scoring formula must total exactly 100% before you can save it.",
+      });
+      return;
+    }
+
+    setMessage(null);
+    setSavingWeightsScope(scope);
+    startTransition(async () => {
+      try {
+        const result = await saveRecruitmentScoringConfig({ scope, weights });
+        if (result.success) {
+          if (scope === "applicants") {
+            if (result.weights) {
+              setApplicantWeights(result.weights);
+            }
+          } else {
+            if (result.weights) {
+              setMigrationWeights(result.weights);
+            }
+          }
+          setDirtyWeights((prev) => ({ ...prev, [scope]: false }));
+          setMessage({ type: "success", text: `${scope === "applicants" ? "Applicant" : "Migration"} scoring formula saved.` });
+        } else {
+          setMessage({ type: "error", text: result.error || "Failed to save recruitment scoring weights." });
+        }
+      } catch (error: unknown) {
+        setMessage({ type: "error", text: getErrorMessage(error) || "Failed to save recruitment scoring weights." });
+      }
+      setSavingWeightsScope(null);
+    });
+  };
+
   const clearInlineEdit = () => {
     if (tab === "applicants") {
       setApplicantDraft(emptyApplicantDraft);
@@ -1124,31 +1149,42 @@ export default function RecruitmentPanel({
             Adjust the score weights for this tab. Changes auto-save for all leaders and admins so everyone sees the same formula.
           </div>
             <div style={miniStatsGridStyle}>
-              <WeightField label="Troop" value={(tab === "applicants" ? applicantWeights : migrationWeights).troop} onChange={(value) => handleWeightChange(tab, "troop", value, setApplicantWeights, setMigrationWeights)} />
-              <WeightField label="Hero" value={(tab === "applicants" ? applicantWeights : migrationWeights).hero} onChange={(value) => handleWeightChange(tab, "hero", value, setApplicantWeights, setMigrationWeights)} />
-              <WeightField label="Tech" value={(tab === "applicants" ? applicantWeights : migrationWeights).tech} onChange={(value) => handleWeightChange(tab, "tech", value, setApplicantWeights, setMigrationWeights)} />
-              <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => handleWeightChange(tab, "kills", value, setApplicantWeights, setMigrationWeights)} />
-              <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => handleWeightChange(tab, "structure", value, setApplicantWeights, setMigrationWeights)} />
-              <WeightField label="Mod Vehicle" value={(tab === "applicants" ? applicantWeights : migrationWeights).modVehicle} onChange={(value) => handleWeightChange(tab, "modVehicle", value, setApplicantWeights, setMigrationWeights)} />
+              <WeightField label="Troop" value={(tab === "applicants" ? applicantWeights : migrationWeights).troop} onChange={(value) => handleWeightChange(tab, "troop", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
+              <WeightField label="Hero" value={(tab === "applicants" ? applicantWeights : migrationWeights).hero} onChange={(value) => handleWeightChange(tab, "hero", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
+              <WeightField label="Tech" value={(tab === "applicants" ? applicantWeights : migrationWeights).tech} onChange={(value) => handleWeightChange(tab, "tech", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
+              <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => handleWeightChange(tab, "kills", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
+              <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => handleWeightChange(tab, "structure", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
+              <WeightField label="Mod Vehicle" value={(tab === "applicants" ? applicantWeights : migrationWeights).modVehicle} onChange={(value) => handleWeightChange(tab, "modVehicle", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
             </div>
-          <div
-            style={{
-              borderRadius: "6px",
-              padding: "0.8rem 1rem",
-              border: `1px solid ${Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001 ? "var(--accent-neon)" : "var(--accent-purple)"}`,
-              backgroundColor: Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001 ? "rgba(0,255,157,0.08)" : "rgba(153,0,255,0.08)",
-              color: Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001 ? "var(--accent-neon)" : "var(--accent-purple)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.84rem",
-            }}
-          >
-            Total Weight: {(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) * 100).toFixed(0)}%
-            {Math.abs(totalWeight(tab === "applicants" ? applicantWeights : migrationWeights) - 1) < 0.0001
-              ? " (Optimized)"
-              : " (Target: 100%)"}
-          </div>
-        </section>
-      )}
+            <div className="flex-row justify-between gap-3 items-center" style={{ flexWrap: "wrap" }}>
+              <div
+                style={{
+                  borderRadius: "6px",
+                  padding: "0.8rem 1rem",
+                  border: `1px solid ${Math.abs(currentWeightTotal - 1) < 0.0001 ? "var(--accent-neon)" : currentWeightTotal > 1 ? "var(--accent-red)" : "var(--accent-purple)"}`,
+                  backgroundColor: Math.abs(currentWeightTotal - 1) < 0.0001 ? "rgba(0,255,157,0.08)" : currentWeightTotal > 1 ? "rgba(255,51,102,0.08)" : "rgba(153,0,255,0.08)",
+                  color: Math.abs(currentWeightTotal - 1) < 0.0001 ? "var(--accent-neon)" : currentWeightTotal > 1 ? "var(--accent-red)" : "var(--accent-purple)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.84rem",
+                }}
+              >
+                Total Weight: {(currentWeightTotal * 100).toFixed(0)}%
+                {Math.abs(currentWeightTotal - 1) < 0.0001
+                  ? " (Ready to save)"
+                  : currentWeightTotal > 1
+                    ? " (Over 100%)"
+                    : " (Target: 100%)"}
+              </div>
+              <button
+                className="cyber-button primary"
+                onClick={saveFormula}
+                disabled={isPending || savingWeightsScope === tab || !currentWeightsDirty || Math.abs(currentWeightTotal - 1) >= 0.0001}
+              >
+                {savingWeightsScope === tab ? "SAVING FORMULA..." : "SAVE FORMULA"}
+              </button>
+            </div>
+          </section>
+        )}
 
       <section className="cyber-card flex-col gap-4">
         <h3 style={{ color: "var(--accent-purple)" }}>
@@ -1766,18 +1802,15 @@ function handleWeightChange(
   key: keyof RecruitmentScoreWeights,
   value: number,
   setApplicantWeights: Dispatch<SetStateAction<RecruitmentScoreWeights>>,
-  setMigrationWeights: Dispatch<SetStateAction<RecruitmentScoreWeights>>
+  setMigrationWeights: Dispatch<SetStateAction<RecruitmentScoreWeights>>,
+  setDirtyWeights: Dispatch<SetStateAction<{ applicants: boolean; migrations: boolean }>>
 ) {
   if (tab === "applicants") {
-    setApplicantWeights((prev) => {
-      const next = { ...prev, [key]: value };
-      return totalWeight(next) > 1 ? prev : next;
-    });
+    setApplicantWeights((prev) => ({ ...prev, [key]: value }));
+    setDirtyWeights((prev) => ({ ...prev, applicants: true }));
   } else {
-    setMigrationWeights((prev) => {
-      const next = { ...prev, [key]: value };
-      return totalWeight(next) > 1 ? prev : next;
-    });
+    setMigrationWeights((prev) => ({ ...prev, [key]: value }));
+    setDirtyWeights((prev) => ({ ...prev, migrations: true }));
   }
 }
 
