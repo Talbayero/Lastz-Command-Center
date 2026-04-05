@@ -5,6 +5,19 @@ import { useRouter } from "next/navigation";
 import Tesseract from "tesseract.js";
 import { AlertTriangle, ChevronDown, ChevronRight, Download, LayoutGrid, Pencil, Table2, Upload, Trash2 } from "lucide-react";
 import { parseLastZProfileImage } from "@/utils/ocrParser";
+import {
+  createCsvTemplate,
+  mergeApplicantDraft,
+  mergeMigrationDraft,
+  parseCsvText,
+  toApplicantDraftFromCsv,
+  toMigrationDraftFromCsv,
+  type ApplicantDraft,
+  type ApplicantRecord,
+  type MigrationDraft,
+  type MigrationRecord,
+  type SharedDraft,
+} from "@/utils/recruitmentImport";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 import {
   deleteApplicant,
@@ -15,7 +28,6 @@ import {
 } from "@/app/actions/recruitment";
 import {
   computeRecruitmentScore,
-  defaultRecommendationThresholds,
   getCategoryFromScore,
   getFormulaLabel,
   getRecommendationBand,
@@ -24,66 +36,6 @@ import {
   type RecruitmentScoreWeights,
 } from "@/utils/recruitmentScoring";
 
-type ApplicantRecord = {
-  id: string;
-  name: string;
-  timezone: string;
-  status: string;
-  notes: string;
-  techPower: number;
-  heroPower: number;
-  troopPower: number;
-  modVehiclePower: number;
-  structurePower: number;
-  march1Power: number;
-  march2Power: number;
-  march3Power: number;
-  march4Power: number;
-  combatPower: number;
-  kills: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type MigrationRecord = {
-  id: string;
-  name: string;
-  originalServer: string;
-  originalAlliance: string;
-  reasonForLeaving: string;
-  contactStatus: string;
-  category: string;
-  status: string;
-  notes: string;
-  techPower: number;
-  heroPower: number;
-  troopPower: number;
-  modVehiclePower: number;
-  structurePower: number;
-  march1Power: number;
-  march2Power: number;
-  march3Power: number;
-  march4Power: number;
-  combatPower: number;
-  kills: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ApplicantDraft = SharedDraft & {
-  timezone: string;
-  status: string;
-};
-
-type MigrationDraft = SharedDraft & {
-  originalServer: string;
-  originalAlliance: string;
-  reasonForLeaving: string;
-  contactStatus: string;
-  category: string;
-  status: string;
-};
-
 type RecruitmentRecommendation = string;
 
 type ApplicantRow = ApplicantRecord & {
@@ -91,6 +43,7 @@ type ApplicantRow = ApplicantRecord & {
   recommendation: RecruitmentRecommendation;
   effectiveCategory: string;
   hasWarning: boolean;
+  fitDisagrees: boolean;
 };
 
 type MigrationRow = MigrationRecord & {
@@ -98,25 +51,10 @@ type MigrationRow = MigrationRecord & {
   recommendation: RecruitmentRecommendation;
   effectiveCategory: string;
   hasWarning: boolean;
+  fitDisagrees: boolean;
 };
 
 type RecruitmentRow = ApplicantRow | MigrationRow;
-
-type SharedDraft = {
-  name: string;
-  techPower: number;
-  heroPower: number;
-  troopPower: number;
-  modVehiclePower: number;
-  structurePower: number;
-  march1Power: number;
-  march2Power: number;
-  march3Power: number;
-  march4Power: number;
-  combatPower: number;
-  kills: number;
-  notes: string;
-};
 
 type SortDirection = "asc" | "desc";
 
@@ -207,263 +145,16 @@ const emptyMigrationDraft = {
   status: "Scouted",
 } satisfies MigrationDraft;
 
+function toTestIdPart(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
+}
+
 function isMigrationRow(row: RecruitmentRow): row is MigrationRow {
   return "originalServer" in row;
 }
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
-}
-
-function normalizeCsvHeader(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function parseCsvLine(line: string) {
-  const values: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    const next = line[index + 1];
-
-    if (char === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (char === "," && !inQuotes) {
-      values.push(current.trim());
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  values.push(current.trim());
-  return values;
-}
-
-function parseCsvText(text: string) {
-  const lines = text
-    .replace(/^\uFEFF/, "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length < 2) {
-    return [];
-  }
-
-  const headers = parseCsvLine(lines[0]).map(normalizeCsvHeader);
-  return lines.slice(1).map((line) => {
-    const values = parseCsvLine(line);
-    return headers.reduce<Record<string, string>>((acc, header, index) => {
-      acc[header] = values[index] ?? "";
-      return acc;
-    }, {});
-  });
-}
-
-function csvNumber(value: string | undefined) {
-  const digits = (value ?? "").replace(/[^\d]/g, "");
-  return digits ? Number(digits) : 0;
-}
-
-function getCsvValue(row: Record<string, string>, ...keys: string[]) {
-  for (const key of keys) {
-    const normalized = normalizeCsvHeader(key);
-    const value = row[normalized];
-    if (typeof value === "string" && value.length > 0) {
-      return value;
-    }
-  }
-  return "";
-}
-
-function preferNonZero(current: number, incoming: number) {
-  return current === 0 && incoming > 0 ? incoming : current;
-}
-
-function preferBlank(current: string, incoming: string) {
-  return current.trim() === "" && incoming.trim() !== "" ? incoming : current;
-}
-
-function toApplicantDraftFromCsv(row: Record<string, string>): ApplicantDraft {
-  return {
-    name: getCsvValue(row, "player name", "name"),
-    timezone: getCsvValue(row, "timezone") || "UTC-6",
-    status: getCsvValue(row, "status") || "New",
-    techPower: csvNumber(getCsvValue(row, "tech power", "tech")),
-    heroPower: csvNumber(getCsvValue(row, "hero power", "hero")),
-    troopPower: csvNumber(getCsvValue(row, "troop power", "troop")),
-    modVehiclePower: csvNumber(getCsvValue(row, "mod vehicle power", "mod vehicle", "modvehicle")),
-    structurePower: csvNumber(getCsvValue(row, "structure power", "structure")),
-    march1Power: csvNumber(getCsvValue(row, "march 1 power", "march1power", "march1")),
-    march2Power: csvNumber(getCsvValue(row, "march 2 power", "march2power", "march2")),
-    march3Power: csvNumber(getCsvValue(row, "march 3 power", "march3power", "march3")),
-    march4Power: csvNumber(getCsvValue(row, "march 4 power", "march4power", "march4")),
-    combatPower: 0,
-    kills: csvNumber(getCsvValue(row, "kills")),
-    notes: getCsvValue(row, "notes"),
-  };
-}
-
-function toMigrationDraftFromCsv(row: Record<string, string>): MigrationDraft {
-  return {
-    name: getCsvValue(row, "player name", "name"),
-    originalServer: getCsvValue(row, "original server", "server", "origin server"),
-    originalAlliance: getCsvValue(row, "original alliance", "alliance", "origin alliance"),
-    reasonForLeaving: getCsvValue(row, "reason for leaving", "reason"),
-    contactStatus: getCsvValue(row, "contact status", "contact") || "Not Contacted",
-    category: getCsvValue(row, "category") || "Regular",
-    status: getCsvValue(row, "status") || "Scouted",
-    techPower: csvNumber(getCsvValue(row, "tech power", "tech")),
-    heroPower: csvNumber(getCsvValue(row, "hero power", "hero")),
-    troopPower: csvNumber(getCsvValue(row, "troop power", "troop")),
-    modVehiclePower: csvNumber(getCsvValue(row, "mod vehicle power", "mod vehicle", "modvehicle")),
-    structurePower: csvNumber(getCsvValue(row, "structure power", "structure")),
-    march1Power: csvNumber(getCsvValue(row, "march 1 power", "march1power", "march1")),
-    march2Power: csvNumber(getCsvValue(row, "march 2 power", "march2power", "march2")),
-    march3Power: csvNumber(getCsvValue(row, "march 3 power", "march3power", "march3")),
-    march4Power: csvNumber(getCsvValue(row, "march 4 power", "march4power", "march4")),
-    combatPower: 0,
-    kills: csvNumber(getCsvValue(row, "kills")),
-    notes: getCsvValue(row, "notes"),
-  };
-}
-
-function mergeApplicantDraft(existing: ApplicantRecord, incoming: ApplicantDraft): ApplicantDraft {
-  return {
-    name: existing.name,
-    timezone: preferBlank(existing.timezone, incoming.timezone) || "UTC-6",
-    status: existing.status || incoming.status,
-    techPower: preferNonZero(existing.techPower, incoming.techPower),
-    heroPower: preferNonZero(existing.heroPower, incoming.heroPower),
-    troopPower: preferNonZero(existing.troopPower, incoming.troopPower),
-    modVehiclePower: preferNonZero(existing.modVehiclePower, incoming.modVehiclePower),
-    structurePower: preferNonZero(existing.structurePower, incoming.structurePower),
-    march1Power: preferNonZero(existing.march1Power, incoming.march1Power),
-    march2Power: preferNonZero(existing.march2Power, incoming.march2Power),
-    march3Power: preferNonZero(existing.march3Power, incoming.march3Power),
-    march4Power: preferNonZero(existing.march4Power, incoming.march4Power),
-    combatPower: 0,
-    kills: preferNonZero(existing.kills, incoming.kills),
-    notes: preferBlank(existing.notes, incoming.notes),
-  };
-}
-
-function mergeMigrationDraft(existing: MigrationRecord, incoming: MigrationDraft): MigrationDraft {
-  return {
-    name: existing.name,
-    originalServer: preferBlank(existing.originalServer, incoming.originalServer),
-    originalAlliance: preferBlank(existing.originalAlliance, incoming.originalAlliance),
-    reasonForLeaving: preferBlank(existing.reasonForLeaving, incoming.reasonForLeaving),
-    contactStatus: existing.contactStatus || incoming.contactStatus,
-    category: existing.category || incoming.category || "Regular",
-    status: existing.status || incoming.status,
-    techPower: preferNonZero(existing.techPower, incoming.techPower),
-    heroPower: preferNonZero(existing.heroPower, incoming.heroPower),
-    troopPower: preferNonZero(existing.troopPower, incoming.troopPower),
-    modVehiclePower: preferNonZero(existing.modVehiclePower, incoming.modVehiclePower),
-    structurePower: preferNonZero(existing.structurePower, incoming.structurePower),
-    march1Power: preferNonZero(existing.march1Power, incoming.march1Power),
-    march2Power: preferNonZero(existing.march2Power, incoming.march2Power),
-    march3Power: preferNonZero(existing.march3Power, incoming.march3Power),
-    march4Power: preferNonZero(existing.march4Power, incoming.march4Power),
-    combatPower: 0,
-    kills: preferNonZero(existing.kills, incoming.kills),
-    notes: preferBlank(existing.notes, incoming.notes),
-  };
-}
-
-function createCsvTemplate(scope: "applicants" | "migrations") {
-  const headers =
-    scope === "applicants"
-      ? [
-          "player_name",
-          "timezone",
-          "status",
-          "tech_power",
-          "hero_power",
-          "troop_power",
-          "mod_vehicle_power",
-          "structure_power",
-          "march_1_power",
-          "march_2_power",
-          "march_3_power",
-          "march_4_power",
-          "kills",
-          "notes",
-        ]
-      : [
-          "player_name",
-          "original_server",
-          "original_alliance",
-          "status",
-          "contact_status",
-          "category",
-          "reason_for_leaving",
-          "tech_power",
-          "hero_power",
-          "troop_power",
-          "mod_vehicle_power",
-          "structure_power",
-          "march_1_power",
-          "march_2_power",
-          "march_3_power",
-          "march_4_power",
-          "kills",
-          "notes",
-        ];
-
-  const sample =
-    scope === "applicants"
-      ? [
-          "SamplePlayer",
-          "UTC-6",
-          "New",
-          "19255142",
-          "56195929",
-          "81674460",
-          "8061391",
-          "63673199",
-          "0",
-          "0",
-          "0",
-          "0",
-          "4341281",
-          "Optional notes",
-        ]
-      : [
-          "SamplePlayer",
-          "123",
-          "PHnx",
-          "Scouted",
-          "Not Contacted",
-          "Regular",
-          "Optional reason",
-          "19255142",
-          "56195929",
-          "81674460",
-          "8061391",
-          "63673199",
-          "0",
-          "0",
-          "0",
-          "0",
-          "4341281",
-          "Optional notes",
-        ];
-
-  return `${headers.join(",")}\n${sample.join(",")}\n`;
 }
 
 function marchTotal(entry: Pick<SharedDraft, "march1Power" | "march2Power" | "march3Power" | "march4Power">) {
@@ -544,6 +235,19 @@ function compareRecruitmentRows(
     default:
       return 0;
   }
+}
+
+function getFormulaCategory(score: number) {
+  return getCategoryFromScore(score);
+}
+
+function hasMigrationFitDisagreement(row: Pick<MigrationRecord, "category">, score: number) {
+  const manualCategory = row.category?.trim();
+  if (!manualCategory) {
+    return false;
+  }
+
+  return manualCategory !== getFormulaCategory(score);
 }
 
 async function cropNameBlob(file: File): Promise<Blob | null> {
@@ -685,6 +389,7 @@ export default function RecruitmentPanel({
               recommendation: getRecommendationBand(score, applicantThresholds),
               effectiveCategory: "",
               hasWarning: hasMissingStats(entry),
+              fitDisagrees: false,
             };
           })
           .sort((a, b) => compareRecruitmentRows(a, b, applicantSort)),
@@ -701,6 +406,7 @@ export default function RecruitmentPanel({
               recommendation: getRecommendationBand(score, migrationThresholds),
               effectiveCategory: entry.category || getCategoryFromScore(score),
               hasWarning: hasMissingStats(entry),
+              fitDisagrees: hasMigrationFitDisagreement(entry, score),
             };
           })
           .sort((a, b) => compareRecruitmentRows(a, b, migrationSort)),
@@ -1146,10 +852,18 @@ export default function RecruitmentPanel({
 
       <div className="flex-row justify-between gap-4" style={{ flexWrap: "wrap" }}>
         <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
-          <button className={`cyber-button ${tab === "applicants" ? "primary" : ""}`} onClick={() => setTab("applicants")}>
+          <button
+            className={`cyber-button ${tab === "applicants" ? "primary" : ""}`}
+            onClick={() => setTab("applicants")}
+            data-testid="recruitment-tab-applicants"
+          >
             Applicants
           </button>
-          <button className={`cyber-button ${tab === "migrations" ? "primary" : ""}`} onClick={() => setTab("migrations")}>
+          <button
+            className={`cyber-button ${tab === "migrations" ? "primary" : ""}`}
+            onClick={() => setTab("migrations")}
+            data-testid="recruitment-tab-migrations"
+          >
             Migration Candidates
           </button>
         </div>
@@ -1169,7 +883,7 @@ export default function RecruitmentPanel({
             <div style={{ color: "var(--text-main)", marginTop: "0.4rem" }}>{currentFormula}</div>
           </div>
           <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
-            Strong Fit: {currentThresholds.strongFit}+ | Borderline: {currentThresholds.borderline}+ | Low Priority: under {currentThresholds.borderline}
+            Formula Fit: Strong Fit {currentThresholds.strongFit}+ | Borderline {currentThresholds.borderline}+ | Low Priority under {currentThresholds.borderline}
           </div>
         </div>
 
@@ -1231,6 +945,7 @@ export default function RecruitmentPanel({
               <button
                 className="cyber-button primary"
                 onClick={saveFormula}
+                data-testid={`recruitment-save-formula-${tab}`}
                 disabled={
                   isPending ||
                   savingWeightsScope === tab ||
@@ -1251,7 +966,7 @@ export default function RecruitmentPanel({
         </h3>
         <div style={miniStatsGridStyle}>
           <MiniMetric label="Total" value={String(summaryRows.total)} />
-          <MiniMetric label="Strong Fit" value={String(summaryRows.strongFit)} />
+          <MiniMetric label="Formula Strong Fit" value={String(summaryRows.strongFit)} />
           <MiniMetric label="Borderline" value={String(summaryRows.borderline)} />
           <MiniMetric label="Low Priority" value={String(summaryRows.lowPriority)} />
         </div>
@@ -1291,6 +1006,7 @@ export default function RecruitmentPanel({
                   accept="image/*"
                   style={{ display: "none" }}
                   disabled={isScanning}
+                  data-testid={`recruitment-screenshot-upload-${tab}`}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -1314,6 +1030,7 @@ export default function RecruitmentPanel({
                     accept=".csv,text/csv"
                     style={{ display: "none" }}
                     disabled={isScanning}
+                    data-testid={`recruitment-csv-upload-${tab}`}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
@@ -1366,7 +1083,7 @@ export default function RecruitmentPanel({
                 >
                   Clear
                 </button>
-                <button className="cyber-button primary" onClick={saveCurrent} disabled={isPending}>
+                <button className="cyber-button primary" onClick={saveCurrent} disabled={isPending} data-testid={`recruitment-save-record-${tab}`}>
                   {isPending ? "Saving..." : "Save"}
                 </button>
               </div>
@@ -1388,6 +1105,7 @@ export default function RecruitmentPanel({
                 placeholder={`Type a ${tab === "applicants" ? "player" : "candidate"} name...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                data-testid={`recruitment-search-${tab}`}
               />
             </div>
             <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
@@ -1468,7 +1186,7 @@ export default function RecruitmentPanel({
                     direction={tab === "applicants" && applicantSort.key === "fit" ? applicantSort.direction : tab === "migrations" && migrationSort.key === "fit" ? migrationSort.direction : null}
                     onClick={() => toggleSort("fit")}
                   >
-                    Fit
+                    Formula Fit
                   </SortableHeaderCell>
                   <SortableHeaderCell
                     active={tab === "applicants" ? applicantSort.key === "updatedAt" : migrationSort.key === "updatedAt"}
@@ -1487,7 +1205,10 @@ export default function RecruitmentPanel({
 
                   return (
                   <Fragment key={row.id}>
-                    <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                    <tr
+                      style={{ borderBottom: "1px solid var(--border-subtle)" }}
+                      data-testid={`recruitment-row-${tab}-${toTestIdPart(row.name)}`}
+                    >
                       <BodyCell>
                         <button
                           className="cyber-button"
@@ -1518,15 +1239,34 @@ export default function RecruitmentPanel({
                       {migrationRow && <BodyCell><span style={categoryBadgeStyle(migrationRow.effectiveCategory)}>{migrationRow.effectiveCategory}</span></BodyCell>}
                       <BodyCell>{row.status}</BodyCell>
                       <BodyCell>{row.score.toFixed(2)}</BodyCell>
-                      <BodyCell><span style={badgeStyle(row.recommendation)}>{row.recommendation}</span></BodyCell>
+                      <BodyCell>
+                        <div className="flex-col gap-2">
+                          <span style={badgeStyle(row.recommendation)}>{row.recommendation}</span>
+                          {migrationRow?.fitDisagrees && (
+                            <span style={{ color: "#ffd166", fontFamily: "var(--font-mono)", fontSize: "0.72rem" }}>
+                              Manual category differs from formula score
+                            </span>
+                          )}
+                        </div>
+                      </BodyCell>
                       <BodyCell>{formatDate(row.updatedAt)}</BodyCell>
                       {canManage && (
                         <BodyCell>
                           <div className="flex-row gap-2" style={{ flexWrap: "wrap" }}>
-                            <button className="cyber-button" onClick={() => (migrationRow ? editMigration(migrationRow) : editApplicant(applicantRow!))} aria-label="Edit record">
+                            <button
+                              className="cyber-button"
+                              onClick={() => (migrationRow ? editMigration(migrationRow) : editApplicant(applicantRow!))}
+                              aria-label="Edit record"
+                              data-testid={`recruitment-edit-${tab}-${toTestIdPart(row.name)}`}
+                            >
                               <Pencil size={14} />
                             </button>
-                            <button className="cyber-button" style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }} onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}>
+                            <button
+                              className="cyber-button"
+                              style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
+                              onClick={() => (tab === "applicants" ? removeApplicant(row.id) : removeMigration(row.id))}
+                              data-testid={`recruitment-delete-${tab}-${toTestIdPart(row.name)}`}
+                            >
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -1589,7 +1329,12 @@ export default function RecruitmentPanel({
                                   <button className="cyber-button" onClick={clearInlineEdit}>
                                     Cancel
                                   </button>
-                                  <button className="cyber-button primary" onClick={saveCurrent} disabled={isPending}>
+                                  <button
+                                    className="cyber-button primary"
+                                    onClick={saveCurrent}
+                                    disabled={isPending}
+                                    data-testid={`recruitment-inline-save-${tab}-${toTestIdPart(row.name)}`}
+                                  >
                                     {isPending ? "Saving..." : "Save Changes"}
                                   </button>
                                 </div>
@@ -1617,7 +1362,14 @@ export default function RecruitmentPanel({
                   <div style={summaryLabelStyle}>Rank #{index + 1}</div>
                   <h3 style={{ color: "var(--accent-neon)", marginTop: "0.35rem" }}>{row.name}</h3>
                 </div>
-                <span style={badgeStyle(row.recommendation)}>{row.recommendation}</span>
+                <div className="flex-col gap-2" style={{ alignItems: "flex-end" }}>
+                  <span style={badgeStyle(row.recommendation)}>{row.recommendation}</span>
+                  {migrationRow?.fitDisagrees && (
+                    <span style={{ color: "#ffd166", fontFamily: "var(--font-mono)", fontSize: "0.72rem" }}>
+                      Manual category differs from formula score
+                    </span>
+                  )}
+                </div>
               </div>
               <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
                 {applicantRow
@@ -1626,8 +1378,11 @@ export default function RecruitmentPanel({
                 }
               </div>
               {migrationRow && (
-                <div>
+                <div className="flex-col gap-2">
                   <span style={categoryBadgeStyle(migrationRow.effectiveCategory)}>{migrationRow.effectiveCategory}</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: "0.78rem" }}>
+                    Manual category
+                  </span>
                 </div>
               )}
               <div style={miniStatsGridStyle}>
@@ -1667,9 +1422,9 @@ function ApplicantForm({
 }) {
   return (
     <div className="profile-form-grid">
-      <LabeledField label="Player Name"><input className="cyber-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></LabeledField>
+      <LabeledField label="Player Name"><input className="cyber-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="recruitment-applicant-name" /></LabeledField>
       <LabeledField label="Timezone">
-        <select className="cyber-input" value={draft.timezone} onChange={(e) => setDraft({ ...draft, timezone: e.target.value })}>
+        <select className="cyber-input" value={draft.timezone} onChange={(e) => setDraft({ ...draft, timezone: e.target.value })} data-testid="recruitment-applicant-timezone">
           {timezoneOptions.map((timezone) => (
             <option key={timezone} value={timezone}>
               {timezone}
@@ -1678,13 +1433,13 @@ function ApplicantForm({
         </select>
       </LabeledField>
       <LabeledField label="Status">
-        <select className="cyber-input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+        <select className="cyber-input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })} data-testid="recruitment-applicant-status">
           {applicantStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
       </LabeledField>
       <SharedStatFields draft={draft} setDraft={setDraft} />
       <div style={{ gridColumn: "1 / -1" }}>
-        <LabeledField label="Notes"><textarea className="cyber-input" rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></LabeledField>
+        <LabeledField label="Notes"><textarea className="cyber-input" rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} data-testid="recruitment-applicant-notes" /></LabeledField>
       </div>
     </div>
   );
@@ -1699,30 +1454,30 @@ function MigrationForm({
 }) {
   return (
     <div className="profile-form-grid">
-      <LabeledField label="Player Name"><input className="cyber-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></LabeledField>
-      <LabeledField label="Original Server"><input className="cyber-input" value={draft.originalServer} onChange={(e) => setDraft({ ...draft, originalServer: e.target.value })} /></LabeledField>
-      <LabeledField label="Original Alliance"><input className="cyber-input" value={draft.originalAlliance} onChange={(e) => setDraft({ ...draft, originalAlliance: e.target.value })} /></LabeledField>
+      <LabeledField label="Player Name"><input className="cyber-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} data-testid="recruitment-migration-name" /></LabeledField>
+      <LabeledField label="Original Server"><input className="cyber-input" value={draft.originalServer} onChange={(e) => setDraft({ ...draft, originalServer: e.target.value })} data-testid="recruitment-migration-server" /></LabeledField>
+      <LabeledField label="Original Alliance"><input className="cyber-input" value={draft.originalAlliance} onChange={(e) => setDraft({ ...draft, originalAlliance: e.target.value })} data-testid="recruitment-migration-alliance" /></LabeledField>
       <LabeledField label="Category">
-        <select className="cyber-input" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
+        <select className="cyber-input" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} data-testid="recruitment-migration-category">
           {recruitmentCategories.map((category) => <option key={category} value={category}>{category}</option>)}
         </select>
       </LabeledField>
       <LabeledField label="Status">
-        <select className="cyber-input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+        <select className="cyber-input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })} data-testid="recruitment-migration-status">
           {migrationStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
       </LabeledField>
       <LabeledField label="Contact Status">
-        <select className="cyber-input" value={draft.contactStatus} onChange={(e) => setDraft({ ...draft, contactStatus: e.target.value })}>
+        <select className="cyber-input" value={draft.contactStatus} onChange={(e) => setDraft({ ...draft, contactStatus: e.target.value })} data-testid="recruitment-migration-contact-status">
           {migrationContactStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
       </LabeledField>
       <div style={{ gridColumn: "1 / -1" }}>
-        <LabeledField label="Reason for Leaving"><input className="cyber-input" value={draft.reasonForLeaving} onChange={(e) => setDraft({ ...draft, reasonForLeaving: e.target.value })} /></LabeledField>
+        <LabeledField label="Reason for Leaving"><input className="cyber-input" value={draft.reasonForLeaving} onChange={(e) => setDraft({ ...draft, reasonForLeaving: e.target.value })} data-testid="recruitment-migration-reason" /></LabeledField>
       </div>
       <SharedStatFields draft={draft} setDraft={setDraft} />
       <div style={{ gridColumn: "1 / -1" }}>
-        <LabeledField label="Notes"><textarea className="cyber-input" rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></LabeledField>
+        <LabeledField label="Notes"><textarea className="cyber-input" rows={4} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} data-testid="recruitment-migration-notes" /></LabeledField>
       </div>
     </div>
   );

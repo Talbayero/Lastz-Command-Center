@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { getDeleteUserSuccessState, getManagedUserStatus } from "@/utils/accountLifecycle";
+import {
+  getCreateAccountActionError,
+  getDeleteUserActionError,
+  getResetPasswordActionError,
+} from "@/utils/adminUserActions";
 import {
   adminCreateUserAccount,
   adminDeleteUser,
@@ -32,6 +38,10 @@ type RosterEntry = {
   isOnline: boolean;
   lastLoginAt: string | Date | null;
 };
+
+function toTestIdPart(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item";
+}
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -150,6 +160,16 @@ export default function AdminPanel({
 
     const userId = entry.userId;
     const tempPassword = (tempPasswords[userId] ?? "123456789").trim();
+    const resetError = getResetPasswordActionError({
+      hasAccount: entry.hasAccount,
+      isCurrentUser: entry.userId === currentUserId,
+      tempPassword,
+    });
+    if (resetError) {
+      setMessage({ type: "error", text: resetError });
+      return;
+    }
+
     setMessage(null);
     setActiveUserAction({ userId, type: "reset" });
     setRecentlyResetUserId(null);
@@ -178,8 +198,13 @@ export default function AdminPanel({
 
   const createAccount = (entry: RosterEntry) => {
     const selectedRoleId = entry.roleId || defaultRoleId;
-    if (!selectedRoleId) {
-      setMessage({ type: "error", text: "No role is available for this account yet." });
+    const createError = getCreateAccountActionError({
+      hasAccount: entry.hasAccount,
+      isCurrentUser: entry.userId === currentUserId,
+      roleId: selectedRoleId,
+    });
+    if (createError) {
+      setMessage({ type: "error", text: createError });
       return;
     }
 
@@ -206,6 +231,15 @@ export default function AdminPanel({
   const deleteUser = (entry: RosterEntry) => {
     if (!entry.userId) return;
 
+    const deleteError = getDeleteUserActionError({
+      hasAccount: entry.hasAccount,
+      isCurrentUser: entry.userId === currentUserId,
+    });
+    if (deleteError) {
+      setMessage({ type: "error", text: deleteError });
+      return;
+    }
+
     const confirmed = window.confirm(`Delete the login account for ${entry.playerName}? The BOM player record will stay, but the user account and active sessions will be removed.`);
     if (!confirmed) return;
 
@@ -224,14 +258,9 @@ export default function AdminPanel({
               item.userId === userId
                 ? {
                     ...item,
-                    hasAccount: false,
-                    userId: null,
+                    ...getDeleteUserSuccessState(),
                     roleId: defaultRoleId,
                     roleName: null,
-                    isActive: true,
-                    disabledByUser: false,
-                    isOnline: false,
-                    lastLoginAt: null,
                   }
                 : item
             )
@@ -315,6 +344,7 @@ export default function AdminPanel({
                   placeholder="Type a player name..."
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
+                  data-testid="admin-user-search"
                 />
               </div>
               <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
@@ -323,7 +353,7 @@ export default function AdminPanel({
             </div>
 
             {filteredRoster.map((entry) => (
-              <div key={entry.playerId} style={panelStyle}>
+              <div key={entry.playerId} style={panelStyle} data-testid={`admin-user-row-${toTestIdPart(entry.playerName)}`}>
                 {(() => {
                   const isCurrentUser = entry.userId === currentUserId;
                   const resetPasswordKey = entry.userId ?? entry.playerId;
@@ -347,7 +377,13 @@ export default function AdminPanel({
                   <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
                     Status:{" "}
                     <span style={{ color: entry.isOnline ? "var(--accent-neon)" : "var(--text-muted)" }}>
-                      {entry.isOnline ? "Online" : "Offline"}
+                      {entry.isOnline
+                        ? "Online"
+                        : getManagedUserStatus({
+                            hasAccount: entry.hasAccount,
+                            isActive: entry.isActive,
+                            disabledByUser: entry.disabledByUser,
+                          })}
                     </span>
                   </div>
                   <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
@@ -418,6 +454,7 @@ export default function AdminPanel({
                       placeholder="Temp password"
                       value={tempPasswords[resetPasswordKey] ?? "123456789"}
                       disabled={isPending || isCurrentUser}
+                      data-testid={`admin-temp-password-${toTestIdPart(entry.playerName)}`}
                       onChange={(e) =>
                         setTempPasswords((prev) => ({
                           ...prev,
@@ -430,6 +467,7 @@ export default function AdminPanel({
                       className="cyber-button"
                       onClick={() => resetPassword(entry)}
                       disabled={isPending || isCurrentUser}
+                      data-testid={`admin-reset-user-${toTestIdPart(entry.playerName)}`}
                     >
                       {isResettingThisUser ? "RESETTING..." : wasResetThisUser ? "RESET" : "RESET PASSWORD"}
                     </button>
@@ -437,6 +475,7 @@ export default function AdminPanel({
                       className="cyber-button"
                       onClick={() => deleteUser(entry)}
                       disabled={isPending || isCurrentUser}
+                      data-testid={`admin-delete-user-${toTestIdPart(entry.playerName)}`}
                       style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
                     >
                       {isDeletingThisUser ? "DELETING..." : wasDeletedThisUser ? "DELETED" : "DELETE USER"}
@@ -460,9 +499,14 @@ export default function AdminPanel({
                 ) : (
                   <>
                     <div style={{ minWidth: "180px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.75rem" }}>
-                      Temp password: 123456789
+                      Create account with a temporary password from the current admin default flow
                     </div>
-                    <button className="cyber-button primary" onClick={() => createAccount(entry)} disabled={isPending}>
+                    <button
+                      className="cyber-button primary"
+                      onClick={() => createAccount(entry)}
+                      disabled={isPending}
+                      data-testid={`admin-create-account-${toTestIdPart(entry.playerName)}`}
+                    >
                       CREATE ACCOUNT
                     </button>
                   </>

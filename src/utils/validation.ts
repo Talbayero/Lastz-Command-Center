@@ -61,7 +61,7 @@ export function sanitizeMultiLineText(value: unknown, maxLength: number) {
 
 export function sanitizePlayerName(value: unknown) {
   const normalized = sanitizeSingleLineText(value, 40);
-  return normalized.replace(/[^\p{L}\p{N}_\- .'[\]]/gu, "");
+  return normalized.replace(/[^\p{L}\p{N}_\- .'[\]°]/gu, "");
 }
 
 export function sanitizeIdentifier(value: unknown) {

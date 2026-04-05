@@ -42,11 +42,35 @@ export default function AuthPanel({ players }: { players: string[] }) {
     });
   };
 
+  const setModeAndReset = (nextMode: Mode) => {
+    setMode(nextMode);
+    setMessage(null);
+    setFormData((prev) => ({
+      playerName: prev.playerName,
+      password: "",
+      confirmPassword: "",
+    }));
+  };
+
   return (
     <div className="cyber-card" style={{ maxWidth: "720px", margin: "3rem auto", padding: "0", overflow: "hidden" }}>
       <div style={{ display: "flex", borderBottom: "1px solid var(--border-subtle)" }}>
-        <button style={tabStyle(mode === "login")} onClick={() => setMode("login")}>SIGN IN</button>
-        <button style={tabStyle(mode === "signup")} onClick={() => setMode("signup")}>SIGN UP</button>
+        <button
+          type="button"
+          data-testid="auth-tab-login"
+          style={tabStyle(mode === "login")}
+          onClick={() => setModeAndReset("login")}
+        >
+          SIGN IN
+        </button>
+        <button
+          type="button"
+          data-testid="auth-tab-signup"
+          style={tabStyle(mode === "signup")}
+          onClick={() => setModeAndReset("signup")}
+        >
+          SIGN UP
+        </button>
       </div>
 
       <div style={{ padding: "2rem" }}>
@@ -61,12 +85,19 @@ export default function AuthPanel({ players }: { players: string[] }) {
           </div>
         )}
 
-        <div className="flex-col gap-4">
+        <form
+          className="flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSubmit();
+          }}
+        >
           <div className="flex-col gap-2">
             <label className="cyber-label">PLAYER NAME</label>
             <input
               list="bom-player-options"
               className="cyber-input"
+              data-testid="auth-player-name"
               value={formData.playerName}
               onChange={(e) => setFormData((prev) => ({ ...prev, playerName: e.target.value }))}
               placeholder="Select your roster name"
@@ -83,9 +114,10 @@ export default function AuthPanel({ players }: { players: string[] }) {
             <input
               type="password"
               className="cyber-input"
+              data-testid="auth-password"
               value={formData.password}
               onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
-              placeholder="At least 8 characters"
+              placeholder="At least 10 characters"
             />
           </div>
 
@@ -95,6 +127,7 @@ export default function AuthPanel({ players }: { players: string[] }) {
               <input
                 type="password"
                 className="cyber-input"
+                data-testid="auth-confirm-password"
                 value={formData.confirmPassword}
                 onChange={(e) => setFormData((prev) => ({ ...prev, confirmPassword: e.target.value }))}
                 placeholder="Re-enter your password"
@@ -105,10 +138,10 @@ export default function AuthPanel({ players }: { players: string[] }) {
             </div>
           )}
 
-          <button className="cyber-button primary" onClick={onSubmit} disabled={isPending}>
+          <button type="submit" data-testid="auth-submit" className="cyber-button primary" disabled={isPending}>
             {isPending ? "AUTHORIZING..." : mode === "signup" ? "CREATE ACCOUNT" : "SIGN IN"}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@
 import prisma from "@/utils/db";
 import { hasPermission, requirePermission } from "@/utils/auth";
 import { invalidatePlayerDataCache } from "@/utils/cacheTags";
+import { getProfileSaveOwnershipError } from "@/utils/profileAccess";
 import { prunePlayerSnapshots } from "@/utils/snapshotRetention";
 import { normalizeNonNegativeInt, sanitizePlayerName } from "@/utils/validation";
 
@@ -87,12 +88,15 @@ export async function savePlayerData(data: SavePlayerInput) {
           throw new Error("Your linked player record could not be found.");
         }
 
-        if (existingPlayer && existingPlayer.id !== ownPlayer.id) {
-          throw new Error("You can only update your own player profile.");
-        }
-
-        if (name && name.toLowerCase() !== ownPlayer.name.toLowerCase()) {
-          throw new Error("You can only save data to your own player profile.");
+        const ownershipError = getProfileSaveOwnershipError({
+          canEditOthers,
+          actingPlayerId: ownPlayer.id,
+          actingPlayerName: ownPlayer.name,
+          submittedName: name,
+          existingPlayerId: existingPlayer?.id ?? null,
+        });
+        if (ownershipError) {
+          throw new Error(ownershipError);
         }
 
         targetPlayerId = ownPlayer.id;

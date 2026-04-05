@@ -95,7 +95,6 @@ model AllianceApplicant {
   id              String   @id @default(cuid())
   name            String
   timezone        String   @default("")
-  category        String   @default("Regular")
   status          String   @default("New")
   notes           String   @default("")
   techPower       Int      @default(0)
@@ -109,7 +108,6 @@ model AllianceApplicant {
   march4Power     Int      @default(0)
   combatPower     Int      @default(0)
   kills           Int      @default(0)
-  manualAdjustment Int     @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -135,7 +133,6 @@ model MigrationCandidate {
   march4Power     Int      @default(0)
   combatPower     Int      @default(0)
   kills           Int      @default(0)
-  manualAdjustment Int     @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

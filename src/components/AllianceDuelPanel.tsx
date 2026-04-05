@@ -8,6 +8,14 @@ import {
   type AllianceDuelScoreType,
 } from "@/utils/allianceDuel";
 import {
+  dedupeLocalEntries,
+  getAllianceDuelCompliance,
+  parseAllianceDuelOcrRow,
+  summarizeAllianceDuelCompliance,
+  type LocalParsedEntry,
+  type PositionedWord,
+} from "@/utils/allianceDuelReview";
+import {
   processAllianceDuelScreenshot,
   saveAllianceDuelManualScore,
   saveAllianceDuelParsedEntries,
@@ -57,19 +65,6 @@ type DuelOcrWord = {
     y0?: number;
     y1?: number;
   };
-};
-
-type PositionedWord = {
-  text: string;
-  x0: number;
-  y0: number;
-  y1: number;
-};
-
-type LocalParsedEntry = {
-  name: string;
-  rank: number | null;
-  score: number;
 };
 
 async function getTesseract() {
@@ -122,14 +117,7 @@ export default function AllianceDuelPanel({
       return {
         ...player,
         duelEntry,
-        compliance:
-          activeScoreType !== "daily"
-            ? "N/A"
-            : !duelEntry
-              ? "Missing Data"
-              : duelEntry.score >= activeRequirement.minimumScore
-                ? "Met"
-                : "Below Requirement",
+        compliance: getAllianceDuelCompliance(activeScoreType, duelEntry, activeRequirement.minimumScore),
       };
     });
 
@@ -141,22 +129,9 @@ export default function AllianceDuelPanel({
   }, [players, activeScoreType, activeDayKey, activeRequirement.minimumScore]);
 
   const summary = useMemo(() => {
-    if (activeScoreType !== "daily") {
-      return {
-        met: 0,
-        below: 0,
-        missing: activePlayers.filter((player) => !player.duelEntry).length,
-      };
-    }
-
-    return activePlayers.reduce(
-      (acc, player) => {
-        if (player.compliance === "Met") acc.met += 1;
-        else if (player.compliance === "Below Requirement") acc.below += 1;
-        else acc.missing += 1;
-        return acc;
-      },
-      { met: 0, below: 0, missing: 0 }
+    return summarizeAllianceDuelCompliance(
+      activeScoreType,
+      activePlayers.map((player) => player.compliance)
     );
   }, [activePlayers, activeScoreType]);
 
@@ -894,7 +869,7 @@ async function recognizeDuelRows(dataUrl: string): Promise<LocalParsedEntry[]> {
   );
 
   return groupedRows
-    .map(parseOcrRow)
+    .map(parseAllianceDuelOcrRow)
     .filter((entry): entry is LocalParsedEntry => Boolean(entry && entry.name && entry.score > 0));
 }
 
@@ -974,54 +949,6 @@ function groupWordsIntoRows(words: PositionedWord[]) {
   }
 
   return rows.map((row) => row.sort((a, b) => a.x0 - b.x0));
-}
-
-function parseOcrRow(row: PositionedWord[]): LocalParsedEntry | null {
-  const scoreToken = [...row]
-    .reverse()
-    .find((entry) => /\d[\d,._]{4,}/.test(entry.text) || /^\d{5,}$/.test(entry.text.replace(/[^\d]/g, "")));
-  const score = normalizeLocalScore(scoreToken?.text ?? "");
-  if (score <= 0) return null;
-
-  const rankToken = row.find((entry) => /^\d{1,3}$/.test(entry.text.replace(/[^\d]/g, "")));
-  const rank = normalizeLocalRank(rankToken?.text ?? "");
-
-  const filteredNameParts = row
-    .filter((entry) => {
-      const text = entry.text;
-      const digits = text.replace(/[^\d]/g, "");
-      if (digits.length >= 4) return false;
-      if (/^\[.*\]$/.test(text)) return false;
-      if (/rank|ranking|daily|weekly|alliance|misfits|band/i.test(text)) return false;
-      return /[a-zA-Z]/.test(text);
-    })
-    .map((entry) => entry.text.replace(/[^a-zA-Z0-9]/g, ""))
-    .filter(Boolean);
-
-  const name = filteredNameParts.join(" ").trim();
-  if (!name || name.length < 3) return null;
-
-  return { name, rank, score };
-}
-
-function dedupeLocalEntries(entries: LocalParsedEntry[]) {
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = `${entry.name.toLowerCase().replace(/[^a-z0-9]/g, "")}::${entry.score}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function normalizeLocalScore(value: unknown) {
-  const digitsOnly = String(value ?? "").replace(/[^\d]/g, "");
-  return digitsOnly ? Number(digitsOnly) : 0;
-}
-
-function normalizeLocalRank(value: unknown) {
-  const digitsOnly = String(value ?? "").replace(/[^\d]/g, "");
-  return digitsOnly ? Number(digitsOnly) : null;
 }
 
 const scopeTabContainerStyle: React.CSSProperties = {

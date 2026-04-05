@@ -1,6 +1,8 @@
 "use server";
 
 import prisma from "@/utils/db";
+import { getAdminSelfManagementBlockReason } from "@/utils/accessControl";
+import { validatePassword, validateTemporaryPassword } from "@/utils/authValidation";
 import {
   clearCurrentUserCache,
   clearSession,
@@ -10,8 +12,6 @@ import {
   requireCurrentUser,
   requirePermission,
   TEMP_PASSWORD,
-  validatePassword,
-  validateTemporaryPassword,
   verifyPassword,
 } from "@/utils/auth";
 import { invalidateAdminDataCache, invalidateAuthDataCache, invalidatePlayerDataCache } from "@/utils/cacheTags";
@@ -257,10 +257,11 @@ export async function adminUpdateUser(input: {
     const userId = ensureRecordId(input.userId, "User");
     const roleId = ensureRecordId(input.roleId, "Role");
 
-    if (actingUser.id === userId) {
+    const selfEditBlock = getAdminSelfManagementBlockReason(actingUser.id, userId, "edit");
+    if (selfEditBlock) {
       return {
         success: false,
-        error: "Use the account panel to manage your own account. Admin self-edits are protected.",
+        error: selfEditBlock,
       };
     }
 
@@ -356,10 +357,11 @@ export async function adminResetUserPassword(input: { userId: string; tempPasswo
       return { success: false, error: temporaryPasswordError };
     }
 
-    if (actingUser.id === userId) {
+    const selfResetBlock = getAdminSelfManagementBlockReason(actingUser.id, userId, "reset-password");
+    if (selfResetBlock) {
       return {
         success: false,
-        error: "Use the account panel to manage your own password. Admin self-resets are protected.",
+        error: selfResetBlock,
       };
     }
 
@@ -390,10 +392,11 @@ export async function adminDeleteUser(input: { userId: string }) {
     const actingUser = await requirePermission("manageUsers");
     const userId = ensureRecordId(input.userId, "User");
 
-    if (actingUser.id === userId) {
+    const selfDeleteBlock = getAdminSelfManagementBlockReason(actingUser.id, userId, "delete");
+    if (selfDeleteBlock) {
       return {
         success: false,
-        error: "Use the account panel to manage your own account. Admin self-deletes are protected.",
+        error: selfDeleteBlock,
       };
     }
 

@@ -61,33 +61,57 @@ export default function AccountPanel({
 
   return (
     <>
-      <button className="cyber-button" onClick={() => setIsOpen(true)}>
+      <button className="cyber-button" onClick={() => setIsOpen(true)} data-testid="account-open-button">
         {playerName} / {roleName}
       </button>
 
       {isOpen && (
-        <div style={overlayStyle}>
-          <div className="cyber-card" style={{ width: "100%", maxWidth: "520px", position: "relative" }}>
-            {!forcePasswordChange && <button onClick={() => setIsOpen(false)} style={closeStyle}>×</button>}
-            <h2 style={{ marginBottom: "0.25rem" }}>Account Control</h2>
+        <div style={overlayStyle} data-testid="account-panel-overlay">
+          <div
+            className="cyber-card"
+            style={{ width: "100%", maxWidth: "520px", position: "relative" }}
+            data-testid="account-panel-dialog"
+          >
+            {!forcePasswordChange && (
+              <button onClick={() => setIsOpen(false)} style={closeStyle} data-testid="account-close-button">
+                ×
+              </button>
+            )}
+            <h2 style={{ marginBottom: "0.25rem" }} data-testid="account-panel-title">
+              Account Control
+            </h2>
             <p style={{ color: "var(--text-muted)", marginBottom: "1rem" }}>
               {forcePasswordChange
                 ? `Signed in as ${playerName}. Your temporary password must be changed before you can use the command center.`
                 : `Signed in as ${playerName}. Update your password or disable your own account here.`}
             </p>
             {forcePasswordChange && (
-              <p style={{ color: "var(--accent-neon)", marginBottom: "1rem", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
-                Temporary password: 123456789
+              <p
+                style={{ color: "var(--accent-neon)", marginBottom: "1rem", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}
+                data-testid="account-force-password-note"
+              >
+                Use the temporary password provided by your admin, then set a permanent password here.
               </p>
             )}
 
-            {message && <div style={messageStyle(message.type)}>{message.text}</div>}
+            {message && (
+              <div style={messageStyle(message.type)} data-testid={`account-message-${message.type}`}>
+                {message.text}
+              </div>
+            )}
 
-            <div className="flex-col gap-3">
+            <form
+              className="flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onPasswordChange();
+              }}
+            >
               <input
                 type="password"
                 className="cyber-input"
                 placeholder="Current password"
+                data-testid="account-current-password"
                 value={formData.currentPassword}
                 onChange={(e) => setFormData((prev) => ({ ...prev, currentPassword: e.target.value }))}
               />
@@ -95,6 +119,7 @@ export default function AccountPanel({
                 type="password"
                 className="cyber-input"
                 placeholder="New password"
+                data-testid="account-new-password"
                 value={formData.newPassword}
                 onChange={(e) => setFormData((prev) => ({ ...prev, newPassword: e.target.value }))}
               />
@@ -102,31 +127,34 @@ export default function AccountPanel({
                 type="password"
                 className="cyber-input"
                 placeholder="Confirm new password"
+                data-testid="account-confirm-password"
                 value={formData.confirmPassword}
                 onChange={(e) => setFormData((prev) => ({ ...prev, confirmPassword: e.target.value }))}
               />
-            </div>
 
-            <div className="flex-row gap-3" style={{ marginTop: "1.25rem", flexWrap: "wrap" }}>
-              <button className="cyber-button primary" onClick={onPasswordChange} disabled={isPending}>
-                {isPending ? "UPDATING..." : "CHANGE PASSWORD"}
-              </button>
-              {!forcePasswordChange && (
-                <>
-                  <button className="cyber-button" onClick={onLogout} disabled={isPending}>
-                    SIGN OUT
-                  </button>
-                  <button
-                    className="cyber-button"
-                    onClick={onDisable}
-                    disabled={isPending}
-                    style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
-                  >
-                    DISABLE ACCOUNT
-                  </button>
-                </>
-              )}
-            </div>
+              <div className="flex-row gap-3" style={{ marginTop: "1.25rem", flexWrap: "wrap" }}>
+                <button type="submit" className="cyber-button primary" disabled={isPending} data-testid="account-change-password">
+                  {isPending ? "UPDATING..." : "CHANGE PASSWORD"}
+                </button>
+                {!forcePasswordChange && (
+                  <>
+                    <button type="button" className="cyber-button" onClick={onLogout} disabled={isPending} data-testid="account-sign-out">
+                      SIGN OUT
+                    </button>
+                    <button
+                      type="button"
+                      className="cyber-button"
+                      onClick={onDisable}
+                      disabled={isPending}
+                      data-testid="account-disable"
+                      style={{ borderColor: "var(--accent-red)", color: "var(--accent-red)" }}
+                    >
+                      DISABLE ACCOUNT
+                    </button>
+                  </>
+                )}
+              </div>
+            </form>
           </div>
         </div>
       )}

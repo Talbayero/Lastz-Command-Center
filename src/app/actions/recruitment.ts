@@ -148,7 +148,6 @@ export async function saveApplicant(input: ApplicantInput) {
     const data = {
       name,
       timezone,
-      category: "",
       status,
       notes: sanitizeMultiLineText(input.notes, 2000),
       techPower: normalizeNonNegativeInt(input.techPower),
@@ -158,7 +157,6 @@ export async function saveApplicant(input: ApplicantInput) {
       structurePower: normalizeNonNegativeInt(input.structurePower),
       ...getCombatData(input),
       kills: normalizeNonNegativeInt(input.kills),
-      manualAdjustment: 0,
     };
 
     const record = input.id
@@ -185,6 +183,17 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
       return { success: false, error: "Player name is required." };
     }
 
+    const originalServer = sanitizeIdentifier(input.originalServer);
+    const originalAlliance = sanitizeIdentifier(input.originalAlliance);
+
+    if (!originalServer) {
+      return { success: false, error: "Original server is required." };
+    }
+
+    if (!originalAlliance) {
+      return { success: false, error: "Original alliance is required." };
+    }
+
     const status = ensureAllowedValue(input.status, MIGRATION_STATUSES);
     const contactStatus = ensureAllowedValue(input.contactStatus, MIGRATION_CONTACT_STATUSES);
     const requestedCategory = input.category
@@ -205,15 +214,14 @@ export async function saveMigrationCandidate(input: MigrationCandidateInput) {
 
     const data = {
       name,
-      originalServer: sanitizeIdentifier(input.originalServer),
-      originalAlliance: sanitizeIdentifier(input.originalAlliance),
+      originalServer,
+      originalAlliance,
       reasonForLeaving: sanitizeMultiLineText(input.reasonForLeaving, 500),
       contactStatus,
       category: requestedCategory || fallbackCategory,
       status,
       notes: sanitizeMultiLineText(input.notes, 2000),
       ...normalizedStats,
-      manualAdjustment: 0,
     };
 
     const record = input.id

@@ -19,7 +19,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const currentUser = await getCurrentUser();
-  const canManageBugs = hasPermission(currentUser, "manageBugs");
+  const canManageBugs = hasPermission(currentUser, "manageBugs") && !currentUser?.mustChangePassword;
 
   return (
     <html lang="en">

@@ -86,16 +86,18 @@ export async function updateRoster(players: RosterUpdateInput[]) {
       throw new Error(`Player name "${duplicateName.name}" is already in use.`);
     }
 
-    const existingConflicts = await prisma.player.findMany({
+    const existingConflicts = await prisma.player.findFirst({
       where: {
-        name: { in: preparedPlayers.map((player) => player.name) },
         NOT: { id: { in: preparedPlayers.map((player) => player.id) } },
+        OR: preparedPlayers.map((player) => ({
+          name: { equals: player.name, mode: "insensitive" as const },
+        })),
       },
       select: { name: true },
     });
 
-    if (existingConflicts.length > 0) {
-      throw new Error(`Player name "${existingConflicts[0].name}" is already in use.`);
+    if (existingConflicts) {
+      throw new Error(`Player name "${existingConflicts.name}" is already in use.`);
     }
 
     const currentPlayers = await prisma.player.findMany({

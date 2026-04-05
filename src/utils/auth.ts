@@ -4,18 +4,19 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import prisma from "@/utils/db";
 import { invalidateAuthDataCache } from "@/utils/cacheTags";
+import { getPermissionBlockReason } from "@/utils/accessControl";
+import {
+  getNextSessionExpiry,
+  shouldRotateSession,
+} from "@/utils/sessionLifecycle";
 import {
   normalizePermissions,
   permissionKeys,
   type PermissionKey,
   type RolePermissions,
 } from "@/utils/permissions";
-import { sanitizeSingleLineText } from "@/utils/validation";
 
 export const SESSION_COOKIE = "bom_session";
-const SESSION_TTL_DAYS = 7;
-const SESSION_ROTATE_AFTER_MS = 24 * 60 * 60 * 1000;
-const SESSION_EXPIRY_REFRESH_WINDOW_MS = 48 * 60 * 60 * 1000;
 export const TEMP_PASSWORD = "123456789";
 const SYSTEM_ROLE_ENSURE_TTL_MS = 10 * 60 * 1000;
 const CURRENT_USER_CACHE_TTL_MS = 15 * 1000;
@@ -277,17 +278,13 @@ async function buildCurrentUser(tokenHash: string): Promise<{ currentUser: Curre
 
 async function maybeRotateSession(session: SessionWithUser) {
   const now = Date.now();
-  const ageMs = now - session.createdAt.getTime();
-  const msUntilExpiry = session.expiresAt.getTime() - now;
-  const shouldRotate = ageMs >= SESSION_ROTATE_AFTER_MS || msUntilExpiry <= SESSION_EXPIRY_REFRESH_WINDOW_MS;
-
-  if (!shouldRotate) {
+  if (!shouldRotateSession(now, session.createdAt, session.expiresAt)) {
     return false;
   }
 
   const nextToken = randomBytes(32).toString("hex");
   const nextTokenHash = hashSessionToken(nextToken);
-  const nextExpiresAt = new Date(now + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const nextExpiresAt = getNextSessionExpiry(now);
 
   await prisma.userSession.create({
     data: {
@@ -318,7 +315,7 @@ async function maybeRotateSession(session: SessionWithUser) {
 
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = getNextSessionExpiry(Date.now());
 
   await prisma.userSession.create({
     data: {
@@ -394,37 +391,11 @@ export function hasPermission(
 
 export async function requirePermission(permission: PermissionKey) {
   const user = await requireCurrentUser();
-  if (user.mustChangePassword) {
-    throw new Error("Change your temporary password before using the command center.");
-  }
-  if (!hasPermission(user, permission)) {
-    throw new Error("You do not have permission to do that.");
+  const blockReason = getPermissionBlockReason(user, permission);
+  if (blockReason) {
+    throw new Error(blockReason);
   }
   return user;
-}
-
-export function validatePassword(password: string) {
-  const normalizedPassword = sanitizeSingleLineText(password, 256);
-
-  if (normalizedPassword.length < 10) {
-    return "Password must be at least 10 characters long.";
-  }
-
-  if (!/[A-Z]/.test(normalizedPassword) || !/[a-z]/.test(normalizedPassword) || !/\d/.test(normalizedPassword)) {
-    return "Password must include uppercase, lowercase, and a number.";
-  }
-
-  return null;
-}
-
-export function validateTemporaryPassword(password: string) {
-  const normalizedPassword = sanitizeSingleLineText(password, 256);
-
-  if (normalizedPassword.length < 8) {
-    return "Temporary password must be at least 8 characters long.";
-  }
-
-  return null;
 }
 
 export function clearCurrentUserCache() {

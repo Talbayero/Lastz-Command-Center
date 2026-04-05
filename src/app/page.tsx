@@ -132,6 +132,37 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     return <AuthPanel players={authPlayers} />;
   }
 
+  if (currentUser.mustChangePassword) {
+    if (shouldLogPerf) {
+      // eslint-disable-next-line react-hooks/purity
+      console.info(`[PERF] view=forced-password-change total=${Date.now() - pageStart}ms ${perfMarks.join(" | ")}`);
+    }
+
+    return (
+      <div className="page-shell flex-col gap-6">
+        <div className="cyber-card flex-col gap-4" style={{ maxWidth: "720px", margin: "3rem auto" }}>
+          <h1 style={{ color: "var(--accent-neon)" }}>Password Update Required</h1>
+          <p style={{ color: "var(--text-muted)" }}>
+            Your temporary password must be changed before you can use the command center.
+          </p>
+          <div
+            style={{
+              padding: "1rem 1.1rem",
+              borderRadius: "6px",
+              border: "1px solid var(--accent-purple)",
+              backgroundColor: "rgba(184, 74, 255, 0.08)",
+              color: "var(--text-main)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.9rem",
+            }}
+          >
+            Open the account panel in the top-right corner, enter the temporary password provided by your admin, and set a new permanent password to continue.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const canViewOverview = hasPermission(currentUser, "viewAllianceOverview");
   const canViewRecruitment = hasPermission(currentUser, "viewRecruitment");
   const canManageRecruitment = hasPermission(currentUser, "manageRecruitment");
