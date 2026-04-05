@@ -56,6 +56,9 @@ function flattenPlayerSnapshot(player: PlayerLike, snapshot?: SnapshotLike | nul
 const getAllianceAverageCached = unstable_cache(
   async () => {
     const players = await prisma.player.findMany({
+      where: {
+        OR: [{ alliance: "BOM" }, { alliance: null }],
+      },
       select: {
         snapshots: {
           select: {
@@ -112,7 +115,7 @@ const getAllianceAverageCached = unstable_cache(
   },
   ["alliance-average"],
   {
-    revalidate: 60,
+    revalidate: 300,
     tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.roster, CACHE_TAGS.profile],
   }
 );
@@ -150,6 +153,9 @@ async function fetchSelectedPlayer(targetName?: string) {
         },
       })
     : await prisma.player.findFirst({
+        where: {
+          OR: [{ alliance: "BOM" }, { alliance: null }],
+        },
         orderBy: { latestScore: "desc" },
         select: {
           id: true,
@@ -197,7 +203,7 @@ const getSelectedPlayerCached = unstable_cache(
   },
   ["selected-player"],
   {
-    revalidate: 60,
+    revalidate: 300,
     tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.leaderboard, CACHE_TAGS.profile],
   }
 );
@@ -205,6 +211,9 @@ const getSelectedPlayerCached = unstable_cache(
 const getRosterDataCached = unstable_cache(
   async () => {
     const players = await prisma.player.findMany({
+      where: {
+        OR: [{ alliance: "BOM" }, { alliance: null }],
+      },
       orderBy: { name: "asc" },
       select: {
         id: true,
@@ -239,7 +248,7 @@ const getRosterDataCached = unstable_cache(
   },
   ["roster-data"],
   {
-    revalidate: 60,
+    revalidate: 300,
     tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.roster, CACHE_TAGS.profile],
   }
 );
@@ -247,6 +256,9 @@ const getRosterDataCached = unstable_cache(
 const getLeaderboardDataCached = unstable_cache(
   async () => {
     const players = await prisma.player.findMany({
+      where: {
+        OR: [{ alliance: "BOM" }, { alliance: null }],
+      },
       orderBy: { latestScore: "desc" },
       take: 10,
       select: {
@@ -282,7 +294,7 @@ const getLeaderboardDataCached = unstable_cache(
   },
   ["leaderboard-data"],
   {
-    revalidate: 60,
+    revalidate: 300,
     tags: [CACHE_TAGS.players, CACHE_TAGS.snapshots, CACHE_TAGS.leaderboard],
   }
 );

@@ -50,7 +50,8 @@ export default async function Leaderboard({ selectedName }: { selectedName?: str
               >
                 <td style={{ padding: '1rem', color: isSelected ? 'var(--accent-neon)' : 'var(--accent-neon)', fontWeight: 'bold' }}>#{idx + 1}</td>
                 <td style={{ padding: '1rem', fontWeight: 600 }}>
-                  <Link 
+                  <Link
+                    prefetch={false}
                     href={isSelected ? '/' : `/?name=${encodeURIComponent(player.name)}`} 
                     style={{ 
                       color: isSelected ? 'var(--accent-neon)' : 'inherit', 

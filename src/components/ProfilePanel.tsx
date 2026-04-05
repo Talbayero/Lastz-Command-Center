@@ -371,7 +371,7 @@ export default function ProfilePanel({
             </div>
           </section>
 
-          {canEditProfile && <OcrUploader initialName={profile.name} lockName />}
+          {canEditProfile && <OcrUploader initialName={profile.name} lockName playerNames={availablePlayers} />}
           {canManageNotes && (
             <section className="cyber-card flex-col gap-4">
               <h3 style={{ color: "var(--accent-purple)" }}>Leader Notes</h3>

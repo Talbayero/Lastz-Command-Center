@@ -14,6 +14,9 @@ import {
 export const getPlayerNamesCached = unstable_cache(
   async () => {
     const players = await prisma.player.findMany({
+      where: {
+        OR: [{ alliance: "BOM" }, { alliance: null }],
+      },
       orderBy: { name: "asc" },
       select: { name: true },
     });
@@ -21,7 +24,7 @@ export const getPlayerNamesCached = unstable_cache(
   },
   ["player-names"],
   {
-    revalidate: 60,
+    revalidate: 3600,
     tags: [CACHE_TAGS.playerList, CACHE_TAGS.players],
   }
 );
@@ -29,12 +32,15 @@ export const getPlayerNamesCached = unstable_cache(
 export const getAllPlayersCached = unstable_cache(
   async () =>
     prisma.player.findMany({
+      where: {
+        OR: [{ alliance: "BOM" }, { alliance: null }],
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
   ["all-players"],
   {
-    revalidate: 60,
+    revalidate: 3600,
     tags: [CACHE_TAGS.players, CACHE_TAGS.playerList],
   }
 );
@@ -46,7 +52,7 @@ export const getBugDataCached = unstable_cache(
     }),
   ["bug-list"],
   {
-    revalidate: 60,
+    revalidate: 900,
     tags: [CACHE_TAGS.bugs],
   }
 );
@@ -59,7 +65,7 @@ export const getAdminRolesCached = unstable_cache(
     }),
   ["admin-roles"],
   {
-    revalidate: 60,
+    revalidate: 3600,
     tags: [CACHE_TAGS.roles, CACHE_TAGS.admin],
   }
 );
@@ -125,24 +131,31 @@ export const getDuelScoresCached = unstable_cache(
     }),
   ["duel-scores"],
   {
-    revalidate: 60,
+    revalidate: 300,
     tags: [CACHE_TAGS.duel],
   }
 );
 
-export async function getRecruitmentConfigsCached() {
-  const [applicantConfig, migrationConfig] = await Promise.all([
-    prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } }),
-    prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } }),
-  ]);
+export const getRecruitmentConfigsCached = unstable_cache(
+  async () => {
+    const [applicantConfig, migrationConfig] = await Promise.all([
+      prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } }),
+      prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } }),
+    ]);
 
-  return {
-    applicants: normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants")),
-    migrations: normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations")),
-    applicantThresholds: normalizeThresholds(applicantConfig?.weights, defaultRecommendationThresholds),
-    migrationThresholds: normalizeThresholds(migrationConfig?.weights, defaultRecommendationThresholds),
-  };
-}
+    return {
+      applicants: normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants")),
+      migrations: normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations")),
+      applicantThresholds: normalizeThresholds(applicantConfig?.weights, defaultRecommendationThresholds),
+      migrationThresholds: normalizeThresholds(migrationConfig?.weights, defaultRecommendationThresholds),
+    };
+  },
+  ["recruitment-config"],
+  {
+    revalidate: 3600,
+    tags: [CACHE_TAGS.recruitmentConfig, CACHE_TAGS.recruitment],
+  }
+);
 
 export const getRecruitmentApplicantsCached = unstable_cache(
   async () =>
@@ -151,7 +164,7 @@ export const getRecruitmentApplicantsCached = unstable_cache(
     }),
   ["recruitment-applicants"],
   {
-    revalidate: 120,
+    revalidate: 3600,
     tags: [CACHE_TAGS.recruitment],
   }
 );
@@ -163,7 +176,7 @@ export const getRecruitmentMigrationsCached = unstable_cache(
     }),
   ["recruitment-migrations"],
   {
-    revalidate: 120,
+    revalidate: 3600,
     tags: [CACHE_TAGS.recruitment],
   }
 );
@@ -244,7 +257,7 @@ export const getProfilePlayerCached = unstable_cache(
   },
   ["profile-player"],
   {
-    revalidate: 60,
+    revalidate: 300,
     tags: [CACHE_TAGS.profile, CACHE_TAGS.players, CACHE_TAGS.snapshots],
   }
 );
@@ -288,7 +301,7 @@ export const getProfileDailyDuelDataCached = unstable_cache(
   },
   ["profile-daily-duel"],
   {
-    revalidate: 60,
+    revalidate: 300,
     tags: [CACHE_TAGS.duel, CACHE_TAGS.duelRequirements, CACHE_TAGS.profile],
   }
 );

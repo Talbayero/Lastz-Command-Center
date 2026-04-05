@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import Leaderboard from "@/components/Leaderboard";
 import AllianceOverview from "@/components/AllianceOverview";
 import { getCurrentUser, hasPermission } from "@/utils/auth";
-import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
+import { ALLIANCE_DUEL_DAYS, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
 import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
 import {
@@ -163,7 +163,6 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   const needsAllPlayers =
     currentView === "performance" ||
     currentView === "duel" ||
-    currentView === "admin" ||
     (currentView === "profile" && canBrowseProfiles);
   const needsAllianceAverage =
     currentView === "profile" ||
@@ -223,7 +222,6 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   if (shouldLoadDuelData) {
     try {
-      await ensureAllianceDuelRequirements();
       [duelRequirements, duelScores] = await Promise.all([
         timed("duelRequirements", () => getDuelRequirementsCached()),
         timed("duelScores", () => getDuelScoresCached()),
@@ -262,11 +260,10 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
     }
   }
 
-  if (currentView === "profile") {
-    await ensureAllianceDuelRequirements();
-    const resolvedTargetName = canBrowseProfiles ? profileTargetName : currentUser.playerName;
-    const profilePlayer = await timed("profilePlayer", () =>
-      getProfilePlayerCached(resolvedTargetName, currentUser.playerId)
+    if (currentView === "profile") {
+      const resolvedTargetName = canBrowseProfiles ? profileTargetName : currentUser.playerName;
+      const profilePlayer = await timed("profilePlayer", () =>
+        getProfilePlayerCached(resolvedTargetName, currentUser.playerId)
     );
 
     if (profilePlayer) {
@@ -342,41 +339,41 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
         </div>
 
         <nav className="page-nav">
-          <Link href="/?view=profile" className={`cyber-button ${currentView === "profile" ? "primary" : ""}`} style={tabLinkStyle}>
+            <Link prefetch={false} href="/?view=profile" className={`cyber-button ${currentView === "profile" ? "primary" : ""}`} style={tabLinkStyle}>
             Profile
           </Link>
           {canViewOverview && (
-            <Link href="/?view=overview" className={`cyber-button ${currentView === "overview" ? "primary" : ""}`} style={tabLinkStyle}>
+              <Link prefetch={false} href="/?view=overview" className={`cyber-button ${currentView === "overview" ? "primary" : ""}`} style={tabLinkStyle}>
               Overview
             </Link>
           )}
           {canViewRecruitment && (
-            <Link href="/?view=recruitment" className={`cyber-button ${currentView === "recruitment" ? "primary" : ""}`} style={tabLinkStyle}>
+              <Link prefetch={false} href="/?view=recruitment" className={`cyber-button ${currentView === "recruitment" ? "primary" : ""}`} style={tabLinkStyle}>
               Recruitment
             </Link>
           )}
           {canViewAllianceDuel && (
-            <Link href="/?view=duel" className={`cyber-button ${currentView === "duel" ? "primary" : ""}`} style={tabLinkStyle}>
+              <Link prefetch={false} href="/?view=duel" className={`cyber-button ${currentView === "duel" ? "primary" : ""}`} style={tabLinkStyle}>
               Alliance Duel
             </Link>
           )}
           {canViewDashboard && (
-            <Link href="/?view=performance" className={`cyber-button ${currentView === "performance" ? "primary" : ""}`} style={tabLinkStyle}>
+              <Link prefetch={false} href="/?view=performance" className={`cyber-button ${currentView === "performance" ? "primary" : ""}`} style={tabLinkStyle}>
               Performance
             </Link>
           )}
           {canViewDashboard && (
-            <Link href="/?view=roster" className={`cyber-button ${currentView === "roster" ? "primary" : ""}`} style={tabLinkStyle}>
+              <Link prefetch={false} href="/?view=roster" className={`cyber-button ${currentView === "roster" ? "primary" : ""}`} style={tabLinkStyle}>
               Roster
             </Link>
           )}
           {canManageBugs && (
-            <Link href="/?view=bugs" className={`cyber-button ${currentView === "bugs" ? "primary" : ""}`} style={tabLinkStyle}>
+              <Link prefetch={false} href="/?view=bugs" className={`cyber-button ${currentView === "bugs" ? "primary" : ""}`} style={tabLinkStyle}>
               Bugs
             </Link>
           )}
           {canAccessAdmin && (
-            <Link href="/?view=admin" className={`cyber-button ${currentView === "admin" ? "primary" : ""}`} style={tabLinkStyle}>
+              <Link prefetch={false} href="/?view=admin" className={`cyber-button ${currentView === "admin" ? "primary" : ""}`} style={tabLinkStyle}>
               Admin
             </Link>
           )}
@@ -562,7 +559,11 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
         {currentView === "performance" && canUploadProfile && (
           <section className="col-span-4 flex-col gap-6">
-            <OcrUploader initialName={currentUser.playerName} lockName={!canUploadForOthers} />
+            <OcrUploader
+              initialName={currentUser.playerName}
+              lockName={!canUploadForOthers}
+              playerNames={allPlayerNames}
+            />
             <div className="cyber-card">
               <h3 style={{ color: "var(--accent-purple)", marginBottom: "1.5rem" }}>Scoring Engine</h3>
               <ScoringEngine />

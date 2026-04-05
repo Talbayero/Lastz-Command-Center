@@ -350,8 +350,6 @@ export async function clearSession() {
 }
 
 export async function getCurrentUser() {
-  await ensureSystemRoles();
-
   const cookieStore = await getSessionCookieStore();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
 

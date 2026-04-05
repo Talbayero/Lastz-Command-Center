@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { parseLastZProfileImage } from "@/utils/ocrParser";
 import { Upload, Loader2, CheckCircle2, PencilLine, ScanLine } from "lucide-react";
 import { savePlayerData } from "@/app/actions/savePlayer";
-import { getPlayers } from "@/app/actions/getPlayers";
 import { extractGeminiName } from "@/app/actions/extractGeminiName";
 
 type PowerStats = {
@@ -303,9 +302,11 @@ function StatsForm({ data, setData, players, isPending, onSave, lockName = false
 export default function OcrUploader({
   initialName = "",
   lockName = false,
+  playerNames = [],
 }: {
   initialName?: string;
   lockName?: boolean;
+  playerNames?: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -314,14 +315,16 @@ export default function OcrUploader({
   const [progress, setProgress] = useState(0);
   const [scanData, setScanData] = useState<ProfileStats | null>(null);
   const [manualData, setManualData] = useState<ProfileStats>({ ...EMPTY_STATS, name: initialName });
-  const [existingPlayers, setExistingPlayers] = useState<string[]>([]);
+  const [existingPlayers, setExistingPlayers] = useState<string[]>(playerNames);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
 
-  useEffect(() => { getPlayers().then(setExistingPlayers); }, []);
   useEffect(() => {
     setManualData((prev) => ({ ...prev, name: initialName }));
     setScanData((prev) => (prev ? { ...prev, name: initialName || prev.name } : prev));
   }, [initialName]);
+  useEffect(() => {
+    setExistingPlayers(playerNames);
+  }, [playerNames]);
 
   const handleSave = (data: ProfileStats) => {
     setSaveStatus(null);
@@ -333,7 +336,9 @@ export default function OcrUploader({
           setSaveStatus({ type: "success", msg: `✅ ${data.name} saved successfully!` });
           setScanData(null);
           setManualData({ ...EMPTY_STATS, name: initialName });
-          getPlayers().then(setExistingPlayers);
+          setExistingPlayers((prev) =>
+            data.name && !prev.includes(data.name) ? [...prev, data.name].sort((a, b) => a.localeCompare(b)) : prev
+          );
           router.refresh();
         } else {
           setSaveStatus({ type: "error", msg: `❌ Save Failed: ${result.error}` });
