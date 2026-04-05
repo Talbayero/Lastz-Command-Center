@@ -4,9 +4,12 @@ import { requirePermission } from "@/utils/auth";
 import { invalidateRecruitmentDataCache } from "@/utils/cacheTags";
 import {
   computeRecruitmentScore,
+  defaultRecommendationThresholds,
   getCategoryFromScore,
   getDefaultWeights,
+  normalizeThresholds,
   normalizeWeights,
+  type RecruitmentRecommendationThresholds,
   type RecruitmentScope,
 } from "@/utils/recruitmentScoring";
 import {
@@ -106,22 +109,24 @@ export async function ensureRecruitmentScoringConfigs() {
 export async function saveRecruitmentScoringConfig(input: {
   scope: RecruitmentScope;
   weights: Record<string, unknown>;
+  thresholds?: Record<string, unknown>;
 }) {
   try {
     await requirePermission("manageRecruitment");
     const weights = normalizeWeights(input.weights, getDefaultWeights(input.scope));
+    const thresholds = normalizeThresholds(input.thresholds, defaultRecommendationThresholds);
 
     await prisma.recruitmentScoringConfig.upsert({
       where: { scope: input.scope },
-      update: { weights },
+      update: { weights: { ...weights, ...thresholds } },
       create: {
         scope: input.scope,
-        weights,
+        weights: { ...weights, ...thresholds },
       },
     });
 
     invalidateRecruitmentDataCache();
-    return { success: true, weights };
+    return { success: true, weights, thresholds };
   } catch (error: unknown) {
     console.error("SAVE RECRUITMENT SCORING CONFIG ERROR:", error);
     return { success: false, error: getErrorMessage(error, "Failed to save recruitment scoring config.") };

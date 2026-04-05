@@ -4,7 +4,12 @@ import { unstable_cache } from "next/cache";
 import prisma from "@/utils/db";
 import { ALLIANCE_DUEL_DAYS, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
 import { CACHE_TAGS } from "@/utils/cacheTags";
-import { getDefaultWeights, normalizeWeights } from "@/utils/recruitmentScoring";
+import {
+  defaultRecommendationThresholds,
+  getDefaultWeights,
+  normalizeThresholds,
+  normalizeWeights,
+} from "@/utils/recruitmentScoring";
 
 export const getPlayerNamesCached = unstable_cache(
   async () => {
@@ -134,6 +139,8 @@ export async function getRecruitmentConfigsCached() {
   return {
     applicants: normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants")),
     migrations: normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations")),
+    applicantThresholds: normalizeThresholds(applicantConfig?.weights, defaultRecommendationThresholds),
+    migrationThresholds: normalizeThresholds(migrationConfig?.weights, defaultRecommendationThresholds),
   };
 }
 

@@ -9,6 +9,11 @@ export type RecruitmentScoreWeights = {
   modVehicle: number;
 };
 
+export type RecruitmentRecommendationThresholds = {
+  strongFit: number;
+  borderline: number;
+};
+
 export type RecruitmentScoreInput = {
   techPower: number;
   heroPower: number;
@@ -24,6 +29,10 @@ export type RecruitmentScoreInput = {
 };
 
 export const recruitmentCategories = ["Elite", "Advanced", "Medium", "Regular"] as const;
+export const defaultRecommendationThresholds: RecruitmentRecommendationThresholds = {
+  strongFit: 90,
+  borderline: 55,
+};
 
 export const defaultApplicantWeights: RecruitmentScoreWeights = {
   troop: 0.4,
@@ -48,6 +57,12 @@ export function getDefaultWeights(scope: RecruitmentScope) {
 }
 
 export function normalizeWeightValue(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, parsed);
+}
+
+export function normalizeThresholdValue(value: unknown) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, parsed);
@@ -88,6 +103,24 @@ export function normalizeWeights(
   }
 
   return fallback;
+}
+
+export function normalizeThresholds(
+  raw: unknown,
+  fallback: RecruitmentRecommendationThresholds = defaultRecommendationThresholds
+): RecruitmentRecommendationThresholds {
+  const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const strongFit = normalizeThresholdValue(source.strongFit ?? fallback.strongFit);
+  const borderline = normalizeThresholdValue(source.borderline ?? fallback.borderline);
+
+  if (strongFit <= borderline) {
+    return fallback;
+  }
+
+  return {
+    strongFit,
+    borderline,
+  };
 }
 
 export function totalWeight(weights: RecruitmentScoreWeights) {
@@ -135,9 +168,12 @@ export function getFormulaLabel(
   )} + Mod Vehicle x ${weights.modVehicle.toFixed(2)}`;
 }
 
-export function getRecommendationBand(score: number) {
-  if (score >= 90) return "Strong Fit";
-  if (score >= 55) return "Borderline";
+export function getRecommendationBand(
+  score: number,
+  thresholds: RecruitmentRecommendationThresholds = defaultRecommendationThresholds
+) {
+  if (score >= thresholds.strongFit) return "Strong Fit";
+  if (score >= thresholds.borderline) return "Borderline";
   return "Low Priority";
 }
 

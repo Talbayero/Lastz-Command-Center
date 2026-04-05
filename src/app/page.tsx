@@ -6,7 +6,12 @@ import { getCurrentUser, hasPermission } from "@/utils/auth";
 import { ALLIANCE_DUEL_DAYS, ensureAllianceDuelRequirements, getAllianceDuelDayLabel } from "@/utils/allianceDuel";
 import { normalizePermissions } from "@/utils/permissions";
 import { getAllianceAverage, getRosterData, getSelectedPlayer } from "@/utils/dashboardData";
-import { getDefaultWeights, normalizeWeights } from "@/utils/recruitmentScoring";
+import {
+  defaultRecommendationThresholds,
+  getDefaultWeights,
+  normalizeThresholds,
+  normalizeWeights,
+} from "@/utils/recruitmentScoring";
 import {
   getAdminRolesCached,
   getAdminUsersCached,
@@ -213,6 +218,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
   let recruitmentMigrations: RecruitmentMigrationRow[] = [];
   let recruitmentApplicantWeights = getDefaultWeights("applicants");
   let recruitmentMigrationWeights = getDefaultWeights("migrations");
+  let recruitmentApplicantThresholds = defaultRecommendationThresholds;
+  let recruitmentMigrationThresholds = defaultRecommendationThresholds;
 
   if (shouldLoadDuelData) {
     try {
@@ -229,15 +236,26 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
 
   if (shouldLoadRecruitmentData) {
     try {
-      const [{ applicants: applicantWeights, migrations: migrationWeights }, applicants, migrations] = await Promise.all([
-        timed("recruitmentConfig", () => getRecruitmentConfigsCached()),
-        timed("recruitmentApplicants", () => getRecruitmentApplicantsCached()),
-        timed("recruitmentMigrations", () => getRecruitmentMigrationsCached()),
-      ]);
-      recruitmentApplicantWeights = normalizeWeights(applicantWeights, getDefaultWeights("applicants"));
-      recruitmentMigrationWeights = normalizeWeights(migrationWeights, getDefaultWeights("migrations"));
-      recruitmentApplicants = applicants;
-      recruitmentMigrations = migrations;
+        const [
+          {
+            applicants: applicantWeights,
+            migrations: migrationWeights,
+            applicantThresholds,
+            migrationThresholds,
+          },
+          applicants,
+          migrations,
+        ] = await Promise.all([
+          timed("recruitmentConfig", () => getRecruitmentConfigsCached()),
+          timed("recruitmentApplicants", () => getRecruitmentApplicantsCached()),
+          timed("recruitmentMigrations", () => getRecruitmentMigrationsCached()),
+        ]);
+        recruitmentApplicantWeights = normalizeWeights(applicantWeights, getDefaultWeights("applicants"));
+        recruitmentMigrationWeights = normalizeWeights(migrationWeights, getDefaultWeights("migrations"));
+        recruitmentApplicantThresholds = normalizeThresholds(applicantThresholds, defaultRecommendationThresholds);
+        recruitmentMigrationThresholds = normalizeThresholds(migrationThresholds, defaultRecommendationThresholds);
+        recruitmentApplicants = applicants;
+        recruitmentMigrations = migrations;
     } catch (error: unknown) {
       console.error("RECRUITMENT PAGE LOAD ERROR:", error);
       recruitmentLoadError = "Recruitment data is temporarily unavailable. Refresh in a moment and try again.";
@@ -432,6 +450,8 @@ export default async function Home(props: { searchParams: Promise<{ name?: strin
                   }))}
                   initialApplicantWeights={recruitmentApplicantWeights}
                   initialMigrationWeights={recruitmentMigrationWeights}
+                  initialApplicantThresholds={recruitmentApplicantThresholds}
+                  initialMigrationThresholds={recruitmentMigrationThresholds}
                   canManage={canManageRecruitment}
                 />
               )

@@ -15,10 +15,12 @@ import {
 } from "@/app/actions/recruitment";
 import {
   computeRecruitmentScore,
+  defaultRecommendationThresholds,
   getCategoryFromScore,
   getFormulaLabel,
   getRecommendationBand,
   totalWeight,
+  type RecruitmentRecommendationThresholds,
   type RecruitmentScoreWeights,
 } from "@/utils/recruitmentScoring";
 
@@ -613,12 +615,16 @@ export default function RecruitmentPanel({
   initialMigrations,
   initialApplicantWeights,
   initialMigrationWeights,
+  initialApplicantThresholds,
+  initialMigrationThresholds,
   canManage,
 }: {
   initialApplicants: ApplicantRecord[];
   initialMigrations: MigrationRecord[];
   initialApplicantWeights: RecruitmentScoreWeights;
   initialMigrationWeights: RecruitmentScoreWeights;
+  initialApplicantThresholds: RecruitmentRecommendationThresholds;
+  initialMigrationThresholds: RecruitmentRecommendationThresholds;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -636,6 +642,10 @@ export default function RecruitmentPanel({
   const [isScanning, setIsScanning] = useState(false);
   const [applicantWeights, setApplicantWeights] = useState<RecruitmentScoreWeights>(initialApplicantWeights);
   const [migrationWeights, setMigrationWeights] = useState<RecruitmentScoreWeights>(initialMigrationWeights);
+  const [applicantThresholds, setApplicantThresholds] =
+    useState<RecruitmentRecommendationThresholds>(initialApplicantThresholds);
+  const [migrationThresholds, setMigrationThresholds] =
+    useState<RecruitmentRecommendationThresholds>(initialMigrationThresholds);
   const [dirtyWeights, setDirtyWeights] = useState<{ applicants: boolean; migrations: boolean }>({
     applicants: false,
     migrations: false,
@@ -654,40 +664,47 @@ export default function RecruitmentPanel({
   useEffect(() => {
     setApplicantWeights(initialApplicantWeights);
     setMigrationWeights(initialMigrationWeights);
+    setApplicantThresholds(initialApplicantThresholds);
+    setMigrationThresholds(initialMigrationThresholds);
     setDirtyWeights({ applicants: false, migrations: false });
-  }, [initialApplicantWeights, initialMigrationWeights]);
+  }, [
+    initialApplicantThresholds,
+    initialApplicantWeights,
+    initialMigrationThresholds,
+    initialMigrationWeights,
+  ]);
 
   const applicantRows = useMemo<ApplicantRow[]>(
     () =>
-      applicants
-        .map((entry) => {
-          const score = computeRecruitmentScore(entry, applicantWeights);
-          return {
-            ...entry,
-            score,
-            recommendation: getRecommendationBand(score),
-            effectiveCategory: "",
-            hasWarning: hasMissingStats(entry),
-          };
-        })
-        .sort((a, b) => compareRecruitmentRows(a, b, applicantSort)),
-    [applicants, applicantWeights, applicantSort]
+        applicants
+          .map((entry) => {
+            const score = computeRecruitmentScore(entry, applicantWeights);
+            return {
+              ...entry,
+              score,
+              recommendation: getRecommendationBand(score, applicantThresholds),
+              effectiveCategory: "",
+              hasWarning: hasMissingStats(entry),
+            };
+          })
+          .sort((a, b) => compareRecruitmentRows(a, b, applicantSort)),
+    [applicants, applicantThresholds, applicantWeights, applicantSort]
   );
   const migrationRows = useMemo<MigrationRow[]>(
     () =>
-      migrations
-        .map((entry) => {
-          const score = computeRecruitmentScore(entry, migrationWeights);
-          return {
-            ...entry,
-            score,
-            recommendation: getRecommendationBand(score),
-            effectiveCategory: entry.category || getCategoryFromScore(score),
-            hasWarning: hasMissingStats(entry),
-          };
-        })
-        .sort((a, b) => compareRecruitmentRows(a, b, migrationSort)),
-    [migrations, migrationWeights, migrationSort]
+        migrations
+          .map((entry) => {
+            const score = computeRecruitmentScore(entry, migrationWeights);
+            return {
+              ...entry,
+              score,
+              recommendation: getRecommendationBand(score, migrationThresholds),
+              effectiveCategory: entry.category || getCategoryFromScore(score),
+              hasWarning: hasMissingStats(entry),
+            };
+          })
+          .sort((a, b) => compareRecruitmentRows(a, b, migrationSort)),
+    [migrations, migrationThresholds, migrationWeights, migrationSort]
   );
 
   const currentRows = useMemo<RecruitmentRow[]>(() => {
@@ -720,6 +737,7 @@ export default function RecruitmentPanel({
       : getFormulaLabel("migrations", migrationWeights);
   const currentWeightTotal = totalWeight(tab === "applicants" ? applicantWeights : migrationWeights);
   const currentWeightsDirty = dirtyWeights[tab];
+  const currentThresholds = tab === "applicants" ? applicantThresholds : migrationThresholds;
 
   const downloadCsvTemplate = () => {
     const csv = createCsvTemplate(tab);
@@ -1047,6 +1065,7 @@ export default function RecruitmentPanel({
 
     const scope = tab;
     const weights = scope === "applicants" ? applicantWeights : migrationWeights;
+    const thresholds = scope === "applicants" ? applicantThresholds : migrationThresholds;
     const total = totalWeight(weights);
     if (Math.abs(total - 1) >= 0.0001) {
       setMessage({
@@ -1055,20 +1074,33 @@ export default function RecruitmentPanel({
       });
       return;
     }
+    if (thresholds.strongFit <= thresholds.borderline) {
+      setMessage({
+        type: "error",
+        text: "Strong Fit threshold must be higher than Borderline.",
+      });
+      return;
+    }
 
     setMessage(null);
     setSavingWeightsScope(scope);
     startTransition(async () => {
       try {
-        const result = await saveRecruitmentScoringConfig({ scope, weights });
+        const result = await saveRecruitmentScoringConfig({ scope, weights, thresholds });
         if (result.success) {
           if (scope === "applicants") {
             if (result.weights) {
               setApplicantWeights(result.weights);
             }
+            if (result.thresholds) {
+              setApplicantThresholds(result.thresholds);
+            }
           } else {
             if (result.weights) {
               setMigrationWeights(result.weights);
+            }
+            if (result.thresholds) {
+              setMigrationThresholds(result.thresholds);
             }
           }
           setDirtyWeights((prev) => ({ ...prev, [scope]: false }));
@@ -1132,14 +1164,14 @@ export default function RecruitmentPanel({
       </div>
 
       <div style={summaryBannerStyle}>
-        <div>
-          <div style={summaryLabelStyle}>Scoring Formula</div>
-          <div style={{ color: "var(--text-main)", marginTop: "0.4rem" }}>{currentFormula}</div>
+          <div>
+            <div style={summaryLabelStyle}>Scoring Formula</div>
+            <div style={{ color: "var(--text-main)", marginTop: "0.4rem" }}>{currentFormula}</div>
+          </div>
+          <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
+            Strong Fit: {currentThresholds.strongFit}+ | Borderline: {currentThresholds.borderline}+ | Low Priority: under {currentThresholds.borderline}
+          </div>
         </div>
-        <div style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: "0.8rem" }}>
-          Strong Fit: 90+ | Borderline: 55+ | Low Priority: under 55
-        </div>
-      </div>
 
       {canManage && (
         <section className="cyber-card flex-col gap-4">
@@ -1156,6 +1188,26 @@ export default function RecruitmentPanel({
               <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => handleWeightChange(tab, "kills", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
               <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => handleWeightChange(tab, "structure", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
               <WeightField label="Mod Vehicle" value={(tab === "applicants" ? applicantWeights : migrationWeights).modVehicle} onChange={(value) => handleWeightChange(tab, "modVehicle", value, setApplicantWeights, setMigrationWeights, setDirtyWeights)} />
+            </div>
+            <div style={miniStatsGridStyle}>
+              <ThresholdField
+                label="Strong Fit Starts"
+                value={currentThresholds.strongFit}
+                onChange={(value) =>
+                  tab === "applicants"
+                    ? (setApplicantThresholds((prev) => ({ ...prev, strongFit: value })), setDirtyWeights((prev) => ({ ...prev, applicants: true })))
+                    : (setMigrationThresholds((prev) => ({ ...prev, strongFit: value })), setDirtyWeights((prev) => ({ ...prev, migrations: true })))
+                }
+              />
+              <ThresholdField
+                label="Borderline Starts"
+                value={currentThresholds.borderline}
+                onChange={(value) =>
+                  tab === "applicants"
+                    ? (setApplicantThresholds((prev) => ({ ...prev, borderline: value })), setDirtyWeights((prev) => ({ ...prev, applicants: true })))
+                    : (setMigrationThresholds((prev) => ({ ...prev, borderline: value })), setDirtyWeights((prev) => ({ ...prev, migrations: true })))
+                }
+              />
             </div>
             <div className="flex-row justify-between gap-3 items-center" style={{ flexWrap: "wrap" }}>
               <div
@@ -1179,7 +1231,13 @@ export default function RecruitmentPanel({
               <button
                 className="cyber-button primary"
                 onClick={saveFormula}
-                disabled={isPending || savingWeightsScope === tab || !currentWeightsDirty || Math.abs(currentWeightTotal - 1) >= 0.0001}
+                disabled={
+                  isPending ||
+                  savingWeightsScope === tab ||
+                  !currentWeightsDirty ||
+                  Math.abs(currentWeightTotal - 1) >= 0.0001 ||
+                  currentThresholds.strongFit <= currentThresholds.borderline
+                }
               >
                 {savingWeightsScope === tab ? "SAVING FORMULA..." : "SAVE FORMULA"}
               </button>
@@ -1793,6 +1851,34 @@ function WeightField({
       />
       <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginTop: "0.35rem" }}>
         {Math.round(value * 100)}%
+      </div>
+    </div>
+  );
+}
+
+function ThresholdField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div style={{ backgroundColor: "var(--bg-input)", borderRadius: "6px", padding: "0.75rem", border: "1px solid var(--border-subtle)" }}>
+      <div style={summaryLabelStyle}>{label}</div>
+      <input
+        className="cyber-input"
+        type="number"
+        min="0"
+        step="1"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        style={{ marginTop: "0.45rem" }}
+      />
+      <div style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginTop: "0.35rem" }}>
+        Score threshold
       </div>
     </div>
   );
