@@ -2,7 +2,6 @@ export type RecruitmentScope = "applicants" | "migrations";
 
 export type RecruitmentScoreWeights = {
   troop: number;
-  combat: number;
   hero: number;
   tech: number;
   kills: number;
@@ -28,22 +27,20 @@ export const recruitmentCategories = ["Elite", "Advanced", "Medium", "Regular"] 
 
 export const defaultApplicantWeights: RecruitmentScoreWeights = {
   troop: 0.4,
-  combat: 0.2,
-  hero: 0.15,
-  tech: 0.1,
+  hero: 0.2,
+  tech: 0.15,
   kills: 0.1,
-  structure: 0.05,
-  modVehicle: 0,
+  structure: 0.1,
+  modVehicle: 0.05,
 };
 
 export const defaultMigrationWeights: RecruitmentScoreWeights = {
   troop: 0.3,
-  combat: 0.25,
-  hero: 0.15,
-  tech: 0.1,
+  hero: 0.2,
+  tech: 0.15,
   kills: 0.1,
-  structure: 0.05,
-  modVehicle: 0.05,
+  structure: 0.1,
+  modVehicle: 0.15,
 };
 
 export function getDefaultWeights(scope: RecruitmentScope) {
@@ -61,15 +58,29 @@ export function normalizeWeights(
   fallback: RecruitmentScoreWeights
 ): RecruitmentScoreWeights {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const next = {
+  const next: RecruitmentScoreWeights = {
     troop: normalizeWeightValue(source.troop ?? fallback.troop),
-    combat: normalizeWeightValue(source.combat ?? fallback.combat),
     hero: normalizeWeightValue(source.hero ?? fallback.hero),
     tech: normalizeWeightValue(source.tech ?? fallback.tech),
     kills: normalizeWeightValue(source.kills ?? fallback.kills),
     structure: normalizeWeightValue(source.structure ?? fallback.structure),
     modVehicle: normalizeWeightValue(source.modVehicle ?? fallback.modVehicle),
   };
+
+  const removedCombatWeight = normalizeWeightValue(source.combat);
+  if (removedCombatWeight > 0) {
+    const nonCombatTotal =
+      next.troop + next.hero + next.tech + next.kills + next.structure + next.modVehicle;
+    if (nonCombatTotal > 0) {
+      const scale = (nonCombatTotal + removedCombatWeight) / nonCombatTotal;
+      next.troop *= scale;
+      next.hero *= scale;
+      next.tech *= scale;
+      next.kills *= scale;
+      next.structure *= scale;
+      next.modVehicle *= scale;
+    }
+  }
 
   const total = totalWeight(next);
   if (total <= 1.000001) {
@@ -82,7 +93,6 @@ export function normalizeWeights(
 export function totalWeight(weights: RecruitmentScoreWeights) {
   return (
     weights.troop +
-    weights.combat +
     weights.hero +
     weights.tech +
     weights.kills +
@@ -99,11 +109,9 @@ export function computeRecruitmentScore(
   input: RecruitmentScoreInput,
   weights: RecruitmentScoreWeights
 ) {
-  const combatPower = getCombatPower(input);
   return Number(
     (
       (input.troopPower / 1_000_000) * weights.troop +
-      (combatPower / 1_000_000) * weights.combat +
       (input.heroPower / 1_000_000) * weights.hero +
       (input.techPower / 1_000_000) * weights.tech +
       (input.kills / 1_000_000) * weights.kills +
@@ -118,9 +126,9 @@ export function getFormulaLabel(
   weights: RecruitmentScoreWeights
 ) {
   const label = scope === "applicants" ? "Applicant Score" : "Migration Score";
-  return `${label} = Troop x ${weights.troop.toFixed(2)} + Combat x ${weights.combat.toFixed(
+  return `${label} = Troop x ${weights.troop.toFixed(2)} + Hero x ${weights.hero.toFixed(
     2
-  )} + Hero x ${weights.hero.toFixed(2)} + Tech x ${weights.tech.toFixed(
+  )} + Tech x ${weights.tech.toFixed(
     2
   )} + Kills x ${weights.kills.toFixed(2)} + Structure x ${weights.structure.toFixed(
     2

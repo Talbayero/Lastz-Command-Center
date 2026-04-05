@@ -1123,17 +1123,14 @@ export default function RecruitmentPanel({
           <div style={{ color: "var(--text-muted)", fontSize: "0.86rem" }}>
             Adjust the score weights for this tab. Changes auto-save for all leaders and admins so everyone sees the same formula.
           </div>
-          <div style={miniStatsGridStyle}>
-            <WeightField label="Troop" value={(tab === "applicants" ? applicantWeights : migrationWeights).troop} onChange={(value) => handleWeightChange(tab, "troop", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Combat" value={(tab === "applicants" ? applicantWeights : migrationWeights).combat} onChange={(value) => handleWeightChange(tab, "combat", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Hero" value={(tab === "applicants" ? applicantWeights : migrationWeights).hero} onChange={(value) => handleWeightChange(tab, "hero", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Tech" value={(tab === "applicants" ? applicantWeights : migrationWeights).tech} onChange={(value) => handleWeightChange(tab, "tech", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => handleWeightChange(tab, "kills", value, setApplicantWeights, setMigrationWeights)} />
-            <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => handleWeightChange(tab, "structure", value, setApplicantWeights, setMigrationWeights)} />
-            {tab === "migrations" && (
-              <WeightField label="Mod Vehicle" value={migrationWeights.modVehicle} onChange={(value) => handleWeightChange("migrations", "modVehicle", value, setApplicantWeights, setMigrationWeights)} />
-            )}
-          </div>
+            <div style={miniStatsGridStyle}>
+              <WeightField label="Troop" value={(tab === "applicants" ? applicantWeights : migrationWeights).troop} onChange={(value) => handleWeightChange(tab, "troop", value, setApplicantWeights, setMigrationWeights)} />
+              <WeightField label="Hero" value={(tab === "applicants" ? applicantWeights : migrationWeights).hero} onChange={(value) => handleWeightChange(tab, "hero", value, setApplicantWeights, setMigrationWeights)} />
+              <WeightField label="Tech" value={(tab === "applicants" ? applicantWeights : migrationWeights).tech} onChange={(value) => handleWeightChange(tab, "tech", value, setApplicantWeights, setMigrationWeights)} />
+              <WeightField label="Kills" value={(tab === "applicants" ? applicantWeights : migrationWeights).kills} onChange={(value) => handleWeightChange(tab, "kills", value, setApplicantWeights, setMigrationWeights)} />
+              <WeightField label="Structure" value={(tab === "applicants" ? applicantWeights : migrationWeights).structure} onChange={(value) => handleWeightChange(tab, "structure", value, setApplicantWeights, setMigrationWeights)} />
+              <WeightField label="Mod Vehicle" value={(tab === "applicants" ? applicantWeights : migrationWeights).modVehicle} onChange={(value) => handleWeightChange(tab, "modVehicle", value, setApplicantWeights, setMigrationWeights)} />
+            </div>
           <div
             style={{
               borderRadius: "6px",
