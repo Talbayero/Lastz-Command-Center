@@ -142,6 +142,7 @@ export async function loginUser(input: CredentialsInput) {
       where: {
         player: {
           name: { equals: playerName, mode: "insensitive" },
+          alliance: "BOM",
         },
       },
       include: {
