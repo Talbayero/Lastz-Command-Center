@@ -32,6 +32,10 @@ type RosterEntry = {
   lastLoginAt: string | Date | null;
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function AdminPanel({
   initialRoles,
   initialRoster,
@@ -104,32 +108,36 @@ export default function AdminPanel({
     setActiveUserAction({ userId, type: "save" });
     setRecentlySavedUserId(null);
     startTransition(async () => {
-      const result = await adminUpdateUser({
-        userId,
-        roleId,
-        isActive: entry.isActive,
-        disabledByUser: entry.disabledByUser,
-      });
+      try {
+        const result = await adminUpdateUser({
+          userId,
+          roleId,
+          isActive: entry.isActive,
+          disabledByUser: entry.disabledByUser,
+        });
 
-      if (result.success) {
-        setRoster((prev) =>
-          prev.map((item) =>
-            item.userId === userId
-              ? {
-                  ...item,
-                  roleId,
-                  roleName,
-                  isActive: entry.isActive,
-                  disabledByUser: entry.disabledByUser,
-                }
-              : item
-          )
-        );
-        setMessage({ type: "success", text: `${entry.playerName} updated.` });
-        setRecentlySavedUserId(userId);
-        window.setTimeout(() => setRecentlySavedUserId((current) => (current === userId ? null : current)), 2500);
-      } else {
-        setMessage({ type: "error", text: result.error || "Failed to update user." });
+        if (result.success) {
+          setRoster((prev) =>
+            prev.map((item) =>
+              item.userId === userId
+                ? {
+                    ...item,
+                    roleId,
+                    roleName,
+                    isActive: entry.isActive,
+                    disabledByUser: entry.disabledByUser,
+                  }
+                : item
+            )
+          );
+          setMessage({ type: "success", text: `${entry.playerName} updated.` });
+          setRecentlySavedUserId(userId);
+          window.setTimeout(() => setRecentlySavedUserId((current) => (current === userId ? null : current)), 2500);
+        } else {
+          setMessage({ type: "error", text: result.error || "Failed to update user." });
+        }
+      } catch (error: unknown) {
+        setMessage({ type: "error", text: getErrorMessage(error, "Failed to update user.") });
       }
       setActiveUserAction(null);
     });
@@ -145,17 +153,21 @@ export default function AdminPanel({
     setRecentlyResetUserId(null);
 
     startTransition(async () => {
-      const result = await adminResetUserPassword({ userId, tempPassword });
+      try {
+        const result = await adminResetUserPassword({ userId, tempPassword });
 
-      if (result.success) {
-        setMessage({
-          type: "success",
-          text: `${entry.playerName} password reset to ${tempPassword} and must be changed on next login.`,
-        });
-        setRecentlyResetUserId(userId);
-        window.setTimeout(() => setRecentlyResetUserId((current) => (current === userId ? null : current)), 3000);
-      } else {
-        setMessage({ type: "error", text: result.error || "Failed to reset password." });
+        if (result.success) {
+          setMessage({
+            type: "success",
+            text: `${entry.playerName} password reset to ${tempPassword} and must be changed on next login.`,
+          });
+          setRecentlyResetUserId(userId);
+          window.setTimeout(() => setRecentlyResetUserId((current) => (current === userId ? null : current)), 3000);
+        } else {
+          setMessage({ type: "error", text: result.error || "Failed to reset password." });
+        }
+      } catch (error: unknown) {
+        setMessage({ type: "error", text: getErrorMessage(error, "Failed to reset password.") });
       }
 
       setActiveUserAction(null);
@@ -171,16 +183,20 @@ export default function AdminPanel({
 
     setMessage(null);
     startTransition(async () => {
-      const result = await adminCreateUserAccount({
-        playerId: entry.playerId,
-        roleId: selectedRoleId,
-      });
+      try {
+        const result = await adminCreateUserAccount({
+          playerId: entry.playerId,
+          roleId: selectedRoleId,
+        });
 
-      if (result.success) {
-        setMessage({ type: "success", text: `${entry.playerName} account created.` });
-        router.refresh();
-      } else {
-        setMessage({ type: "error", text: result.error || "Failed to create account." });
+        if (result.success) {
+          setMessage({ type: "success", text: `${entry.playerName} account created.` });
+          router.refresh();
+        } else {
+          setMessage({ type: "error", text: result.error || "Failed to create account." });
+        }
+      } catch (error: unknown) {
+        setMessage({ type: "error", text: getErrorMessage(error, "Failed to create account.") });
       }
     });
   };
@@ -188,17 +204,21 @@ export default function AdminPanel({
   const saveRole = (role: RoleRecord) => {
     setMessage(null);
     startTransition(async () => {
-      const result = await updateRole({
-        roleId: role.id,
-        name: role.name,
-        permissions: role.permissions,
-      });
+      try {
+        const result = await updateRole({
+          roleId: role.id,
+          name: role.name,
+          permissions: role.permissions,
+        });
 
-      if (result.success) {
-        setMessage({ type: "success", text: `${role.name} permissions updated.` });
-        router.refresh();
-      } else {
-        setMessage({ type: "error", text: result.error || "Failed to update role." });
+        if (result.success) {
+          setMessage({ type: "success", text: `${role.name} permissions updated.` });
+          router.refresh();
+        } else {
+          setMessage({ type: "error", text: result.error || "Failed to update role." });
+        }
+      } catch (error: unknown) {
+        setMessage({ type: "error", text: getErrorMessage(error, "Failed to update role.") });
       }
     });
   };
@@ -206,18 +226,22 @@ export default function AdminPanel({
   const addRole = () => {
     setMessage(null);
     startTransition(async () => {
-      const result = await createRole({
-        name: newRoleName,
-        permissions: newRolePermissions,
-      });
+      try {
+        const result = await createRole({
+          name: newRoleName,
+          permissions: newRolePermissions,
+        });
 
-      if (result.success) {
-        setMessage({ type: "success", text: `${newRoleName} role created.` });
-        setNewRoleName("");
-        setNewRolePermissions(emptyRolePermissions());
-        router.refresh();
-      } else {
-        setMessage({ type: "error", text: result.error || "Failed to create role." });
+        if (result.success) {
+          setMessage({ type: "success", text: `${newRoleName} role created.` });
+          setNewRoleName("");
+          setNewRolePermissions(emptyRolePermissions());
+          router.refresh();
+        } else {
+          setMessage({ type: "error", text: result.error || "Failed to create role." });
+        }
+      } catch (error: unknown) {
+        setMessage({ type: "error", text: getErrorMessage(error, "Failed to create role.") });
       }
     });
   };
