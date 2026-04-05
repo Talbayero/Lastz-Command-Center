@@ -125,24 +125,17 @@ export const getDuelScoresCached = unstable_cache(
   }
 );
 
-export const getRecruitmentConfigsCached = unstable_cache(
-  async () => {
-    const [applicantConfig, migrationConfig] = await Promise.all([
-      prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } }),
-      prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } }),
-    ]);
+export async function getRecruitmentConfigsCached() {
+  const [applicantConfig, migrationConfig] = await Promise.all([
+    prisma.recruitmentScoringConfig.findUnique({ where: { scope: "applicants" } }),
+    prisma.recruitmentScoringConfig.findUnique({ where: { scope: "migrations" } }),
+  ]);
 
-    return {
-      applicants: normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants")),
-      migrations: normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations")),
-    };
-  },
-  ["recruitment-configs"],
-  {
-    revalidate: 120,
-    tags: [CACHE_TAGS.recruitmentConfig, CACHE_TAGS.recruitment],
-  }
-);
+  return {
+    applicants: normalizeWeights(applicantConfig?.weights, getDefaultWeights("applicants")),
+    migrations: normalizeWeights(migrationConfig?.weights, getDefaultWeights("migrations")),
+  };
+}
 
 export const getRecruitmentApplicantsCached = unstable_cache(
   async () =>
