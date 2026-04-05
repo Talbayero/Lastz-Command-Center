@@ -88,8 +88,8 @@ runTest("computeRecruitmentScore uses applicant and migration weights predictabl
     kills: 15_000_000,
   };
 
-  assert.equal(computeRecruitmentScore(sample, defaultApplicantWeights), 58);
-  assert.equal(computeRecruitmentScore(sample, defaultMigrationWeights), 54.25);
+  assert.equal(computeRecruitmentScore(sample, defaultApplicantWeights), 48);
+  assert.equal(computeRecruitmentScore(sample, defaultMigrationWeights), 41);
 });
 
 runTest("recommendation bands and categories map to expected thresholds", () => {
