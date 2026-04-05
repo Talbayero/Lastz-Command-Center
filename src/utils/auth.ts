@@ -419,6 +419,16 @@ export function validatePassword(password: string) {
   return null;
 }
 
+export function validateTemporaryPassword(password: string) {
+  const normalizedPassword = sanitizeSingleLineText(password, 256);
+
+  if (normalizedPassword.length < 8) {
+    return "Temporary password must be at least 8 characters long.";
+  }
+
+  return null;
+}
+
 export function clearCurrentUserCache() {
   currentUserCache.clear();
 }

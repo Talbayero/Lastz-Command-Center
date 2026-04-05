@@ -11,6 +11,7 @@ import {
   requirePermission,
   TEMP_PASSWORD,
   validatePassword,
+  validateTemporaryPassword,
   verifyPassword,
 } from "@/utils/auth";
 import { invalidateAdminDataCache, invalidateAuthDataCache, invalidatePlayerDataCache } from "@/utils/cacheTags";
@@ -343,10 +344,16 @@ export async function adminCreateUserAccount(input: {
   }
 }
 
-export async function adminResetUserPassword(input: { userId: string }) {
+export async function adminResetUserPassword(input: { userId: string; tempPassword: string }) {
   try {
     const actingUser = await requirePermission("manageUsers");
     const userId = ensureRecordId(input.userId, "User");
+    const tempPassword = input.tempPassword;
+
+    const temporaryPasswordError = validateTemporaryPassword(tempPassword);
+    if (temporaryPasswordError) {
+      return { success: false, error: temporaryPasswordError };
+    }
 
     if (actingUser.id === userId) {
       return {
@@ -359,7 +366,7 @@ export async function adminResetUserPassword(input: { userId: string }) {
       prisma.user.update({
         where: { id: userId },
         data: {
-          passwordHash: hashPassword(TEMP_PASSWORD),
+          passwordHash: hashPassword(tempPassword),
           mustChangePassword: true,
         },
       }),

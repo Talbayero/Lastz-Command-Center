@@ -54,6 +54,7 @@ export default function AdminPanel({
   const [userPanelOpen, setUserPanelOpen] = useState(true);
   const [rolePanelOpen, setRolePanelOpen] = useState(true);
   const [userSearch, setUserSearch] = useState("");
+  const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
 
   const defaultRoleId = useMemo(
     () => roles.find((role) => role.name === "Alliance Member")?.id ?? roles[0]?.id ?? "",
@@ -81,6 +82,16 @@ export default function AdminPanel({
 
   useEffect(() => {
     setRoster(initialRoster);
+  }, [initialRoster]);
+
+  useEffect(() => {
+    setTempPasswords((prev) =>
+      initialRoster.reduce<Record<string, string>>((acc, entry) => {
+        const key = entry.userId ?? entry.playerId;
+        acc[key] = prev[key] ?? "123456789";
+        return acc;
+      }, {})
+    );
   }, [initialRoster]);
 
   const saveUser = (entry: RosterEntry) => {
@@ -128,17 +139,18 @@ export default function AdminPanel({
     if (!entry.userId) return;
 
     const userId = entry.userId;
+    const tempPassword = (tempPasswords[userId] ?? "123456789").trim();
     setMessage(null);
     setActiveUserAction({ userId, type: "reset" });
     setRecentlyResetUserId(null);
 
     startTransition(async () => {
-      const result = await adminResetUserPassword({ userId });
+      const result = await adminResetUserPassword({ userId, tempPassword });
 
       if (result.success) {
         setMessage({
           type: "success",
-          text: `${entry.playerName} password reset to 123456789 and must be changed on next login.`,
+          text: `${entry.playerName} password reset to ${tempPassword} and must be changed on next login.`,
         });
         setRecentlyResetUserId(userId);
         window.setTimeout(() => setRecentlyResetUserId((current) => (current === userId ? null : current)), 3000);
@@ -241,6 +253,7 @@ export default function AdminPanel({
               <div key={entry.playerId} style={panelStyle}>
                 {(() => {
                   const isCurrentUser = entry.userId === currentUserId;
+                  const resetPasswordKey = entry.userId ?? entry.playerId;
                   const isSavingThisUser =
                     activeUserAction?.userId === entry.userId && activeUserAction.type === "save";
                   const isResettingThisUser =
@@ -324,6 +337,19 @@ export default function AdminPanel({
                     <button className="cyber-button" onClick={() => saveUser(entry)} disabled={isPending || isCurrentUser}>
                       {isSavingThisUser ? "SAVING..." : wasSavedThisUser ? "SAVED" : "SAVE USER"}
                     </button>
+                    <input
+                      className="cyber-input"
+                      placeholder="Temp password"
+                      value={tempPasswords[resetPasswordKey] ?? "123456789"}
+                      disabled={isPending || isCurrentUser}
+                      onChange={(e) =>
+                        setTempPasswords((prev) => ({
+                          ...prev,
+                          [resetPasswordKey]: e.target.value,
+                        }))
+                      }
+                      style={{ minWidth: "170px" }}
+                    />
                     <button
                       className="cyber-button"
                       onClick={() => resetPassword(entry)}
